@@ -120,10 +120,30 @@ def main_loop(conn, script_params):
         print(f"\nParsing MIHCSME Excel file: {tmp_file_path.name}")
         metadata = parse_excel_to_model(tmp_file_path)
         print(f"✓ Successfully parsed metadata")
-        print(f"  - Investigation groups: {len(metadata.investigation_information.groups)}")
-        print(f"  - Study information entries: {len(metadata.study_information.metadata)}")
-        print(f"  - Assay information entries: {len(metadata.assay_information.metadata)}")
+
+        # Count investigation groups
+        if metadata.investigation_information:
+            inv_groups = len(metadata.investigation_information.groups)
+            print(f"  - Investigation groups: {inv_groups}")
+
+        # Count study groups
+        if metadata.study_information:
+            study_groups = len(metadata.study_information.groups)
+            print(f"  - Study information groups: {study_groups}")
+
+        # Count assay groups
+        if metadata.assay_information:
+            assay_groups = len(metadata.assay_information.groups)
+            print(f"  - Assay information groups: {assay_groups}")
+
+        # Count assay conditions
         print(f"  - Assay conditions (wells): {len(metadata.assay_conditions)}")
+
+        # Get unique plate names from metadata
+        metadata_plates = set()
+        if metadata.assay_conditions:
+            metadata_plates = set(c.plate for c in metadata.assay_conditions)
+            print(f"  - Plates in metadata: {sorted(metadata_plates)}")
 
         # Process each target object
         results = []
@@ -136,6 +156,31 @@ def main_loop(conn, script_params):
             print(f"\n{'='*60}")
             print(f"Processing {target_type} {target_id}: {target_obj.getName()}")
             print(f"{'='*60}")
+
+            # Get OMERO plate names and check against metadata
+            omero_plates = set()
+            if target_type == "Screen":
+                for plate in target_obj.listChildren():
+                    omero_plates.add(plate.getName())
+            else:  # Plate
+                omero_plates.add(target_obj.getName())
+
+            print(f"Plates in OMERO: {sorted(omero_plates)}")
+
+            # Check for plate name mismatches
+            if metadata_plates and omero_plates:
+                missing_in_omero = metadata_plates - omero_plates
+                missing_in_metadata = omero_plates - metadata_plates
+
+                if missing_in_omero or missing_in_metadata:
+                    error_msg = "ERROR: Plate name mismatch detected!\n"
+                    if missing_in_omero:
+                        error_msg += f"  - Plates in Excel but NOT in OMERO: {sorted(missing_in_omero)}\n"
+                    if missing_in_metadata:
+                        error_msg += f"  - Plates in OMERO but NOT in Excel: {sorted(missing_in_metadata)}\n"
+                    error_msg += "\nPlease ensure plate names in the Excel file match OMERO plate names exactly."
+                    print(error_msg)
+                    raise ValueError(error_msg)
 
             # Upload metadata
             result = upload_metadata_to_omero(
@@ -152,23 +197,22 @@ def main_loop(conn, script_params):
             # Print summary
             print(f"\n✓ Upload completed:")
             print(f"  - Status: {result['status']}")
-            print(f"  - Screen annotation: {'✓' if result.get('screen_annotated') else '✗'}")
-            print(f"  - Plates annotated: {result.get('plates_annotated', 0)}")
-            print(f"  - Wells succeeded: {result['wells_succeeded']}/{result['wells_total']}")
-            if result['wells_failed'] > 0:
+            print(f"  - Wells processed: {result.get('wells_processed', 0)}")
+            print(f"  - Wells succeeded: {result.get('wells_succeeded', 0)}")
+            if result.get('wells_failed', 0) > 0:
                 print(f"  - Wells failed: {result['wells_failed']}")
-                if result.get('errors'):
-                    print(f"  - Errors: {result['errors'][:3]}")  # Show first 3 errors
+            if result.get('removed_annotations', 0) > 0:
+                print(f"  - Removed annotations: {result['removed_annotations']}")
 
         # Create summary message
-        total_wells = sum(r['wells_total'] for r in results)
-        successful_wells = sum(r['wells_succeeded'] for r in results)
-        failed_wells = sum(r['wells_failed'] for r in results)
+        total_processed = sum(r.get('wells_processed', 0) for r in results)
+        successful_wells = sum(r.get('wells_succeeded', 0) for r in results)
+        failed_wells = sum(r.get('wells_failed', 0) for r in results)
 
         message = (
             f"MIHCSME metadata upload completed.\n"
             f"Processed {len(target_ids)} {target_type}(s).\n"
-            f"Wells: {successful_wells}/{total_wells} succeeded"
+            f"Wells: {successful_wells}/{total_processed} succeeded"
         )
         if failed_wells > 0:
             message += f", {failed_wells} failed"
