@@ -5,12 +5,17 @@ Upload_MIHCSME_Metadata.py
 Uploads MIHCSME (Minimum Information about a High Content Screening
 Microscopy Experiment) metadata from an Excel file to OMERO Plates or Screens.
 
+Reference: Hosseini, Rohola, Matthijs Vlasveld, Joost Willemse, Bob Van De Water, 
+Sylvia E. Le Dévédec, and Katherine J. Wolstencroft. 
+“FAIR High Content Screening in Bioimaging.” Scientific Data 10, no. 1 (2023): 
+462. https://doi.org/10.1038/s41597-023-02367-w.
+
 This script parses a MIHCSME-formatted Excel file and creates Key-Value pair
 annotations on OMERO objects (Screens, Plates, and Wells) with the appropriate
 metadata.
 
 -----------------------------------------------------------------------------
-  Copyright (C) 2024
+  Copyright (C) 2025
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation; either version 2 of the License, or
@@ -31,6 +36,7 @@ from omero.gateway import BlitzGateway
 from omero.rtypes import rstring, rlong, robject
 import omero.scripts as scripts
 from omero.constants.metadata import NSCLIENTMAPANNOTATION
+from omero.model import FileAnnotationI, OriginalFileI
 
 import tempfile
 import os
@@ -38,7 +44,7 @@ from pathlib import Path
 
 # Import the MIHCSME package
 try:
-    from mihcsme_omero import parse_excel_to_model, upload_metadata_to_omero
+    from mihcsme_py import parse_excel_to_model, upload_metadata_to_omero
     MIHCSME_AVAILABLE = True
 except ImportError:
     MIHCSME_AVAILABLE = False
@@ -49,6 +55,7 @@ P_IDS = "IDs"
 P_NAMESPACE = "Namespace"
 P_REPLACE = "Replace existing annotations"
 P_EXCEL_FILE = "MIHCSME_Excel_File"
+P_FILE_ANN_ID = "Existing_FileAnnotation_ID"
 
 DEFAULT_NAMESPACE = "MIHCSME"
 
@@ -109,7 +116,16 @@ def main_loop(conn, script_params):
     target_ids = script_params[P_IDS]
     namespace = script_params[P_NAMESPACE]
     replace = script_params[P_REPLACE]
-    file_ann_id = script_params[P_EXCEL_FILE]
+
+    # Get FileAnnotation ID
+    if P_FILE_ANN_ID not in script_params or script_params[P_FILE_ANN_ID] is None:
+        raise ValueError(
+            "Please provide a FileAnnotation ID for the MIHCSME Excel file. "
+            "Upload the Excel file to OMERO first, then provide its FileAnnotation ID."
+        )
+
+    file_ann_id = script_params[P_FILE_ANN_ID]
+    print(f"Using FileAnnotation ID: {file_ann_id}")
 
     # Download the Excel file
     tmp_file_path = None
@@ -247,11 +263,12 @@ def run_script():
 
     Requirements:
     - The mihcsme_omero package must be installed on the OMERO server
-    - Upload a MIHCSME Excel file as a FileAnnotation first
+    - Upload the MIHCSME Excel file to OMERO first as a FileAnnotation
+    - Provide the FileAnnotation ID to this script
     - Select the target Screen or Plate to annotate
 
     The script will:
-    1. Download and parse the Excel file
+    1. Download and parse the Excel file from the FileAnnotation
     2. Create Investigation/Study/Assay annotations on the Screen/Plate
     3. Create per-well condition annotations on each Well
 
@@ -269,8 +286,8 @@ def run_script():
         ).ofType(rlong(0)),
 
         scripts.Long(
-            P_EXCEL_FILE, optional=False, grouping="2",
-            description="FileAnnotation ID of the MIHCSME Excel file to upload"
+            P_FILE_ANN_ID, optional=False, grouping="2",
+            description="FileAnnotation ID of the MIHCSME Excel file"
         ),
 
         scripts.String(

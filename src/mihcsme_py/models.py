@@ -1088,6 +1088,123 @@ class MIHCSMEMetadata(BaseModel):
             reference_sheets=reference_sheets,
         )
 
+    def to_dataframe(self) -> "pd.DataFrame":
+        """
+        Convert assay conditions to a pandas DataFrame.
+
+        All condition fields (both standard and custom) are included as columns.
+
+        Returns:
+            DataFrame with columns: Plate, Well, and all condition fields
+        """
+        import pandas as pd
+
+        if not self.assay_conditions:
+            return pd.DataFrame()
+
+        conditions_data = []
+        for condition in self.assay_conditions:
+            row = {
+                "Plate": condition.plate,
+                "Well": condition.well,
+                **condition.conditions,  # All custom fields
+            }
+            conditions_data.append(row)
+
+        return pd.DataFrame(conditions_data)
+
+    def update_conditions_from_dataframe(self, df: "pd.DataFrame") -> "MIHCSMEMetadata":
+        """
+        Update assay conditions from a DataFrame while preserving other metadata.
+
+        This is a convenience method that creates a new MIHCSMEMetadata instance
+        with updated assay conditions from the DataFrame, while preserving all
+        other metadata (investigation_information, study_information, etc.) from
+        the current instance.
+
+        Args:
+            df: DataFrame with at minimum 'Plate' and 'Well' columns.
+                All other columns become condition fields.
+
+        Returns:
+            New MIHCSMEMetadata instance with updated conditions
+
+        Example:
+            >>> df = metadata.to_dataframe()
+            >>> df['New Column'] = df['Old Column'].str.lower()
+            >>> updated = metadata.update_conditions_from_dataframe(df)
+            >>> # updated has the new column, plus all original metadata
+        """
+        return self.from_dataframe(
+            df,
+            investigation_information=self.investigation_information,
+            study_information=self.study_information,
+            assay_information=self.assay_information,
+            reference_sheets=self.reference_sheets,
+        )
+
+    @classmethod
+    def from_dataframe(cls, df: "pd.DataFrame", **kwargs) -> "MIHCSMEMetadata":
+        """
+        Create MIHCSMEMetadata from a pandas DataFrame of assay conditions.
+
+        Args:
+            df: DataFrame with at minimum 'Plate' and 'Well' columns.
+                All other columns become condition fields in the conditions dict.
+            **kwargs: Additional fields for MIHCSMEMetadata (investigation_information, etc.)
+
+        Returns:
+            MIHCSMEMetadata instance with assay conditions from DataFrame
+
+        Example:
+            >>> import pandas as pd
+            >>> df = pd.DataFrame({
+            ...     "Plate": ["Plate1", "Plate1"],
+            ...     "Well": ["A01", "A02"],
+            ...     "Treatment": ["DMSO", "Drug"],
+            ...     "Dose": ["0.1", "10"],
+            ...     "DoseUnit": ["µM", "µM"],
+            ... })
+            >>> metadata = MIHCSMEMetadata.from_dataframe(df)
+        """
+        import pandas as pd
+
+        if df.empty:
+            return cls(assay_conditions=[], **kwargs)
+
+        # Check required columns
+        if "Plate" not in df.columns:
+            raise ValueError("DataFrame must have a 'Plate' column")
+        if "Well" not in df.columns:
+            raise ValueError("DataFrame must have a 'Well' column")
+
+        assay_conditions = []
+        for _, row in df.iterrows():
+            # Build condition dict with all columns except Plate and Well
+            conditions = {}
+            for col in df.columns:
+                if col in ["Plate", "Well"]:
+                    continue  # Skip Plate and Well
+
+                value = row[col]
+                # Skip NaN/None values
+                if pd.isna(value):
+                    continue
+
+                # Convert all values to strings
+                conditions[col] = str(value) if not isinstance(value, str) else value
+
+            # Create AssayCondition
+            assay_conditions.append(
+                AssayCondition(
+                    plate=str(row["Plate"]),
+                    well=str(row["Well"]),
+                    conditions=conditions,
+                )
+            )
+
+        return cls(assay_conditions=assay_conditions, **kwargs)
+
     class Config:
         json_schema_extra = {
             "example": {
