@@ -195,7 +195,7 @@ Contributions are welcome! Please:
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) file for details.
+See [LICENSE](LICENSE) file for details.
 
 ## Technology Stack
 
