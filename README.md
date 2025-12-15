@@ -1,4 +1,4 @@
-# MIHCSME OMERO
+# MIHCSME-py
 
 Convert MIHCSME (Minimum Information about a High Content Screening Microscopy Experiment) metadata from Excel spreadsheets to validated Pydantic models and upload to OMERO.
 
@@ -7,10 +7,11 @@ Convert MIHCSME (Minimum Information about a High Content Screening Microscopy E
 
 ## Features
 
-- **Parse MIHCSME Excel files** into type-safe Pydantic models
+- **Parse MIHCSME Excel templates** into type-safe Pydantic models
 - **Automatic validation** with clear error messages
 - **Bidirectional conversion** between Excel, Pydantic, and OMERO key-pair value format
 - **Modern CLI** with rich terminal output
+- **OMERO.script** for server-side handling of MIHCSME templates
 
 ## Installation
 
@@ -18,7 +19,7 @@ Convert MIHCSME (Minimum Information about a High Content Screening Microscopy E
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/MIHCSME_OMERO.git
+git clone https://github.com/Leiden-Cell-Observatory/MIHCSME_OMERO.git
 cd MIHCSME_OMERO
 
 # Create virtual environment with uv

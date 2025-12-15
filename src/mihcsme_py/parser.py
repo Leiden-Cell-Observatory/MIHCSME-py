@@ -6,7 +6,7 @@ from typing import Union
 
 import pandas as pd
 
-from mihcsme_omero.models import (
+from mihcsme_py.models import (
     AssayCondition,
     AssayInformation,
     InvestigationInformation,

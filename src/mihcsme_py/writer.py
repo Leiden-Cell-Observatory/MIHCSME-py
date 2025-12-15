@@ -8,7 +8,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 
-from mihcsme_omero.models import MIHCSMEMetadata
+from mihcsme_py.models import MIHCSMEMetadata
 
 
 def write_metadata_to_excel(metadata: MIHCSMEMetadata, output_path: Path) -> None:

@@ -6,8 +6,8 @@ from typing import Any, Dict, Literal
 import pandas as pd
 from omero.gateway import BlitzGateway
 
-from mihcsme_omero.models import MIHCSMEMetadata
-from mihcsme_omero.omero_connection import (
+from mihcsme_py.models import MIHCSMEMetadata
+from mihcsme_py.omero_connection import (
     create_map_annotation,
     delete_annotations_from_object,
     get_wells_from_plate,
