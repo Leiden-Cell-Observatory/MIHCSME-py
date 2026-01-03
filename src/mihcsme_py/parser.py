@@ -1,6 +1,7 @@
 """Parse MIHCSME Excel files into Pydantic models."""
 
 import logging
+from io import BytesIO
 from pathlib import Path
 from typing import Union
 
@@ -24,32 +25,45 @@ SHEET_ASSAY = "AssayInformation"
 SHEET_CONDITIONS = "AssayConditions"
 
 
-def parse_excel_to_model(excel_path: Union[str, Path]) -> MIHCSMEMetadata:
+def parse_excel_to_model(
+    excel_source: Union[str, Path, bytes, BytesIO]
+) -> MIHCSMEMetadata:
     """
     Parse a MIHCSME Excel file into a Pydantic model.
 
     Args:
-        excel_path: Path to the MIHCSME Excel file
+        excel_source: Path to the MIHCSME Excel file, or bytes/BytesIO of file contents
 
     Returns:
         MIHCSMEMetadata instance
 
     Raises:
-        FileNotFoundError: If the Excel file doesn't exist
+        FileNotFoundError: If the Excel file doesn't exist (when path is provided)
         ValueError: If required sheets are missing or malformed
     """
-    filepath = Path(excel_path)
+    # Handle bytes input (e.g., from file upload)
+    if isinstance(excel_source, bytes):
+        excel_source = BytesIO(excel_source)
+        source_name = "<uploaded file>"
+    elif isinstance(excel_source, BytesIO):
+        source_name = "<uploaded file>"
+    else:
+        # Handle path input
+        filepath = Path(excel_source)
 
-    if not filepath.exists():
-        raise FileNotFoundError(f"Excel file not found: {filepath}")
+        if not filepath.exists():
+            raise FileNotFoundError(f"Excel file not found: {filepath}")
 
-    if filepath.suffix.lower() not in [".xlsx", ".xls"]:
-        raise ValueError(f"File must be Excel format (.xlsx/.xls): {filepath}")
+        if filepath.suffix.lower() not in [".xlsx", ".xls"]:
+            raise ValueError(f"File must be Excel format (.xlsx/.xls): {filepath}")
 
-    logger.info(f"Parsing MIHCSME Excel file: {filepath}")
+        source_name = str(filepath)
+        excel_source = filepath
+
+    logger.info(f"Parsing MIHCSME Excel file: {source_name}")
 
     try:
-        xls = pd.ExcelFile(filepath)
+        xls = pd.ExcelFile(excel_source)
         available_sheets = xls.sheet_names
 
         # Check for required sheets
@@ -103,7 +117,7 @@ def parse_excel_to_model(excel_path: Union[str, Path]) -> MIHCSMEMetadata:
         )
 
     except Exception as e:
-        logger.error(f"Failed to parse Excel file '{filepath}': {e}")
+        logger.error(f"Failed to parse Excel file '{source_name}': {e}")
         raise
 
 

@@ -4,57 +4,109 @@ __generated_with = "0.18.4"
 app = marimo.App(width="medium")
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Load file
+    # 🧬 MIHCSME Metadata Editor
+
+    *Create and edit metadata templates for high-content screening microscopy experiments*
+
+    ---
     """)
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
-    # load a template from Excel
-    upload = mo.ui.switch(label="Upload file?",value=False)
-    upload
+    mo.md(r"""
+    ## 📁 Step 1: Load Template
+
+    Choose how to load your MIHCSME metadata:
+    - **File Path**: Specify a path to an existing Excel file
+    - **Upload File**: Upload an Excel file from your computer
+    """)
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    file_source = mo.ui.radio(
+        options=["File Path", "Upload File"],
+        value="File Path",
+        label="How do you want to load the Excel file?"
+    )
+    file_source
+    return (file_source,)
+
+
 @app.cell
-def _(Path, parse_excel_to_model):
-    excel_path = Path("MIHCSME Template_example.xlsx")
-    metadata = parse_excel_to_model(excel_path)
+def _(file_source, mo):
+    if file_source.value == "File Path":
+        path_input = mo.ui.text(
+            value="MIHCSME Template_example.xlsx",
+            label="Excel file path:",
+            full_width=True
+        )
+        file_upload = None
+        result = path_input
+    else:
+        file_upload = mo.ui.file(
+            label="Upload Excel file:",
+            filetypes=[".xlsx"]
+        )
+        path_input = None
+        result = file_upload
+
+    result
+    return file_upload, path_input
+
+
+@app.cell
+def _(Path, file_source, file_upload, parse_excel_to_model, path_input):
+    metadata = None
+    if file_source.value == "File Path":
+        if path_input is not None and path_input.value:
+            excel_path = Path(path_input.value)
+            metadata = parse_excel_to_model(excel_path)
+    else:
+        # file_upload.value is a list of file objects when files are uploaded
+        if file_upload is not None and len(file_upload.value) > 0:
+            # Pass the bytes directly - parser now accepts bytes
+            metadata = parse_excel_to_model(file_upload.contents())
+
     metadata
     return (metadata,)
 
 
 @app.cell
-def _(mo):
-    f = mo.ui.file()
-    f
-    return (f,)
+def _(metadata, mo):
+    if metadata is not None:
+        _num_conditions = len(metadata.assay_conditions) if metadata.assay_conditions else 0
+        _status = mo.md(f"✅ **Template loaded successfully!** ({_num_conditions} well conditions found)")
+    else:
+        _status = mo.md("⚪ No template loaded yet - use the controls above")
 
-
-@app.cell
-def _(f, parse_excel_to_model):
-    metadata2 = parse_excel_to_model(f.name())
-    metadata2
+    _status
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## TODO
-    1. Make it possible to add plates
-    2. Simple form for other metadata  (foldable)
-    3. Export back to Excel (even later to OMERO??)
+    ## 🧪 Step 2: Edit Plates & Wells
+
+    View and modify well-level metadata across your plates.
+
+    **TODO for future:**
+    1. Make it possible to add new plates
+    2. Add forms for Study and Assay metadata
     """)
     return
 
 
 @app.cell
-def _(metadata):
+def _(metadata, mo):
+    mo.stop(metadata is None)
     # Create state to hold the current dataframe (allows updates)
     df = metadata.to_dataframe()
     return (df,)
@@ -98,7 +150,7 @@ def _(editor, metadata):
     metadata_updated = metadata.update_conditions_from_dataframe(editor.value)
     df_updated = metadata_updated.to_dataframe()
     df_updated
-    return (df_updated,)
+    return df_updated, metadata_updated
 
 
 @app.cell
@@ -120,7 +172,7 @@ def _(
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     import pandas as pd
     import numpy as np
@@ -215,7 +267,7 @@ def _():
     return (visualize_plate,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(df, mo):
     # Get available columns (excluding Plate and Well)
     data_columns = [col for col in df.columns if col not in ['Plate', 'Well']]
@@ -244,15 +296,19 @@ def _(df, mo):
     return column_select, format_select, plate_select
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Edit Investigation Information
+    ## 📋 Step 3: Edit Metadata
+
+    Edit investigation-level metadata (who, what, why).
+
+    *More metadata forms (Study, Assay) will be added in future updates.*
     """)
     return
 
 
-@app.function
+@app.function(hide_code=True)
 def create_pydantic_form(mo, model_class, instance=None):
     form_fields = {}
     for field_name, field_info in model_class.model_fields.items():
@@ -271,8 +327,13 @@ def create_pydantic_form(mo, model_class, instance=None):
     return form_fields
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(DataOwner, InvestigationInfo, metadata, mo):
+    mo.stop(
+        metadata is None,
+        mo.md("⚠️ **Please load a template first**")
+    )
+
     current_data_owner = metadata.investigation_information.data_owner if metadata.investigation_information else None
     data_owner_fields = create_pydantic_form(mo, DataOwner, current_data_owner)
 
@@ -304,17 +365,35 @@ def _(DataOwner, InvestigationInfo, metadata, mo):
     }).form(label="Update Investigation Information", bordered=True)
 
     investigation_tabs
-    return (investigation_tabs,)
+    return data_owner_fields, investigation_info_fields, investigation_tabs
 
 
 @app.cell
-def _(DataOwner, InvestigationInfo, investigation_tabs, mo):
+def _(metadata, mo):
+    mo.stop(
+        metadata is None,
+        mo.md("""
+        ⚠️ **No template loaded**
+
+        Please load a template in Step 1 first.
+        """)
+    )
+    return
+
+
+@app.cell
+def _(
+    DataOwner,
+    InvestigationInfo,
+    data_owner_fields,
+    investigation_info_fields,
+    investigation_tabs,
+    mo,
+):
+    updated_data_owner = None
+    updated_investigation_info = None
+
     if investigation_tabs.value:
-        form_data = investigation_tabs.value
-
-        data_owner_fields = form_data["Data Owner"]
-        investigation_info_fields = form_data["Investigation Info"]
-
         updated_data_owner = DataOwner(
             first_name=data_owner_fields["first_name"].value or None,
             middle_names=data_owner_fields["middle_names"].value or None,
@@ -332,19 +411,110 @@ def _(DataOwner, InvestigationInfo, investigation_tabs, mo):
             investigation_description=investigation_info_fields["investigation_description"].value or None,
         )
 
-        mo.vstack([
+        _form_result = mo.vstack([
             mo.md("**Updated Data Owner:**"),
             updated_data_owner,
             mo.md("**Updated Investigation Info:**"),
             updated_investigation_info,
         ])
+    else:
+        _form_result = mo.md("*Submit the form above to see updated values*")
+
+    _form_result
+    return updated_data_owner, updated_investigation_info
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## 💾 Step 4: Review & Export
+
+    Save your completed metadata template to Excel format.
+    """)
+    return
+
+
+@app.cell
+def _(metadata_updated, mo):
+    if metadata_updated:
+        _summary_df = metadata_updated.to_dataframe()
+        _num_plates = len(_summary_df['Plate'].unique()) if len(_summary_df) > 0 else 0
+        _num_wells = len(_summary_df)
+
+        _summary = mo.md(f"""
+        ### Summary
+        - **Plates:** {_num_plates}
+        - **Wells:** {_num_wells}
+        - **Investigation Info:** {"✓" if metadata_updated.investigation_information else "✗"}
+        """)
+    else:
+        _summary = mo.md("*No metadata to display*")
+
+    _summary
+    return
+
+
+@app.cell
+def _(mo):
+    export_filename = mo.ui.text(
+        value="MIHCSME_export.xlsx",
+        label="Output filename:",
+        full_width=True
+    )
+    export_button = mo.ui.run_button(label="Export to Excel")
+
+    mo.vstack([export_filename, export_button])
+    return export_button, export_filename
+
+
+@app.cell
+def _(
+    InvestigationInformation,
+    Path,
+    export_button,
+    export_filename,
+    metadata_updated,
+    mo,
+    updated_data_owner,
+    updated_investigation_info,
+    write_metadata_to_excel,
+):
+    mo.stop(not export_button.value)
+
+    try:
+        _final_metadata = metadata_updated.model_copy(deep=True)
+
+        try:
+            if updated_data_owner is not None and updated_investigation_info is not None:
+                _updated_investigation_information = InvestigationInformation(
+                    data_owner=updated_data_owner,
+                    investigation_info=updated_investigation_info,
+                )
+                _final_metadata.investigation_information = _updated_investigation_information
+        except NameError:
+            pass
+
+        _output_path = Path(export_filename.value)
+        write_metadata_to_excel(_final_metadata, _output_path)
+
+        _export_result = mo.md(f"✅ **Successfully exported to:** `{_output_path}`")
+    except Exception as e:
+        _export_result = mo.md(f"❌ **Error exporting:** {str(e)}")
+
+    _export_result
     return
 
 
 @app.cell
 def _():
     import marimo as mo
-    from mihcsme_py import parse_excel_to_model, upload_metadata_to_omero, download_metadata_from_omero
+    from io import BytesIO
+    from mihcsme_py import (
+        parse_excel_to_model,
+        upload_metadata_to_omero,
+        download_metadata_from_omero,
+        write_metadata_to_excel,
+    )
     from mihcsme_py.models import (
         MIHCSMEMetadata,
         AssayCondition,
@@ -357,7 +527,15 @@ def _():
     from pathlib import Path
     from pydantic import BaseModel
     from typing import Optional
-    return DataOwner, InvestigationInfo, Path, mo, parse_excel_to_model
+    return (
+        DataOwner,
+        InvestigationInfo,
+        InvestigationInformation,
+        Path,
+        mo,
+        parse_excel_to_model,
+        write_metadata_to_excel,
+    )
 
 
 if __name__ == "__main__":

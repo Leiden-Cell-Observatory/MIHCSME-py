@@ -12,7 +12,7 @@ from mihcsme_py.models import (
 from mihcsme_py.omero_connection import connect
 from mihcsme_py.parser import parse_excel_to_model
 from mihcsme_py.uploader import download_metadata_from_omero, upload_metadata_to_omero
-
+from mihcsme_py.writer import write_metadata_to_excel
 __all__ = [
     "__version__",
     "AssayCondition",
@@ -24,4 +24,5 @@ __all__ = [
     "parse_excel_to_model",
     "upload_metadata_to_omero",
     "download_metadata_from_omero",
+    "write_metadata_to_excel",
 ]

@@ -156,13 +156,13 @@ def _write_assay_conditions(wb: Workbook, assay_conditions: List[Any]) -> None:
         ws.column_dimensions[chr(64 + col_idx)].width = 20
 
 
-def _write_reference_sheet(wb: Workbook, sheet_name: str, data: List[Dict[str, Any]]) -> None:
+def _write_reference_sheet(wb: Workbook, sheet_name: str, data: Dict[str, Any]) -> None:
     """
     Write a reference sheet (sheets starting with _).
 
     :param wb: Workbook object
     :param sheet_name: Name of the reference sheet
-    :param data: List of dictionaries representing rows
+    :param data: Dictionary of key-value pairs
     """
     # Ensure sheet name starts with underscore
     if not sheet_name.startswith('_'):
@@ -175,21 +175,18 @@ def _write_reference_sheet(wb: Workbook, sheet_name: str, data: List[Dict[str, A
         ws.cell(row=1, column=1, value="# Empty reference sheet")
         return
 
-    # Get headers from first row
-    headers = list(data[0].keys())
-
     # Write headers
+    headers = ["Key", "Value"]
     for col_idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col_idx, value=header)
         cell.font = Font(bold=True)
         cell.fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
 
-    # Write data
-    for row_idx, row_data in enumerate(data, start=2):
-        for col_idx, header in enumerate(headers, start=1):
-            value = row_data.get(header, "")
-            ws.cell(row=row_idx, column=col_idx, value=value)
+    # Write data as key-value pairs
+    for row_idx, (key, value) in enumerate(data.items(), start=2):
+        ws.cell(row=row_idx, column=1, value=key)
+        ws.cell(row=row_idx, column=2, value=value)
 
     # Adjust column widths
-    for col_idx in range(1, len(headers) + 1):
-        ws.column_dimensions[chr(64 + col_idx)].width = 20
+    ws.column_dimensions['A'].width = 30
+    ws.column_dimensions['B'].width = 50
