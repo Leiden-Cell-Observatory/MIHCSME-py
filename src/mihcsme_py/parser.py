@@ -1,6 +1,7 @@
 """Parse MIHCSME Excel files into Pydantic models."""
 
 import logging
+from io import BytesIO
 from pathlib import Path
 from typing import Union
 
@@ -24,32 +25,43 @@ SHEET_ASSAY = "AssayInformation"
 SHEET_CONDITIONS = "AssayConditions"
 
 
-def parse_excel_to_model(excel_path: Union[str, Path]) -> MIHCSMEMetadata:
+def parse_excel_to_model(excel_source: Union[str, Path, bytes, BytesIO]) -> MIHCSMEMetadata:
     """
     Parse a MIHCSME Excel file into a Pydantic model.
 
     Args:
-        excel_path: Path to the MIHCSME Excel file
+        excel_source: Path to the MIHCSME Excel file, or bytes/BytesIO of file contents
 
     Returns:
         MIHCSMEMetadata instance
 
     Raises:
-        FileNotFoundError: If the Excel file doesn't exist
+        FileNotFoundError: If the Excel file doesn't exist (when path is provided)
         ValueError: If required sheets are missing or malformed
     """
-    filepath = Path(excel_path)
+    # Handle bytes input (e.g., from file upload)
+    if isinstance(excel_source, bytes):
+        excel_source = BytesIO(excel_source)
+        source_name = "<uploaded file>"
+    elif isinstance(excel_source, BytesIO):
+        source_name = "<uploaded file>"
+    else:
+        # Handle path input
+        filepath = Path(excel_source)
 
-    if not filepath.exists():
-        raise FileNotFoundError(f"Excel file not found: {filepath}")
+        if not filepath.exists():
+            raise FileNotFoundError(f"Excel file not found: {filepath}")
 
-    if filepath.suffix.lower() not in [".xlsx", ".xls"]:
-        raise ValueError(f"File must be Excel format (.xlsx/.xls): {filepath}")
+        if filepath.suffix.lower() not in [".xlsx", ".xls"]:
+            raise ValueError(f"File must be Excel format (.xlsx/.xls): {filepath}")
 
-    logger.info(f"Parsing MIHCSME Excel file: {filepath}")
+        source_name = str(filepath)
+        excel_source = filepath
+
+    logger.info(f"Parsing MIHCSME Excel file: {source_name}")
 
     try:
-        xls = pd.ExcelFile(filepath)
+        xls = pd.ExcelFile(excel_source)
         available_sheets = xls.sheet_names
 
         # Check for required sheets
@@ -103,7 +115,7 @@ def parse_excel_to_model(excel_path: Union[str, Path]) -> MIHCSMEMetadata:
         )
 
     except Exception as e:
-        logger.error(f"Failed to parse Excel file '{filepath}': {e}")
+        logger.error(f"Failed to parse Excel file '{source_name}': {e}")
         raise
 
 
@@ -188,19 +200,6 @@ def _parse_assay_conditions(xls: pd.ExcelFile, sheet_name: str) -> list:
         # Drop columns with NaN headers
         data_rows = data_rows.loc[:, ~pd.isna(headers)]
 
-        # Standard fields that have dedicated properties in AssayCondition
-        standard_fields = {
-            "Plate",
-            "Well",
-            "Treatment",
-            "Dose",
-            "DoseUnit",
-            "CellLine",
-            "TimeTreatment",
-            "ReplID",
-            "remarks",
-        }
-
         # Convert to AssayCondition models
         assay_conditions = []
         for _, row in data_rows.iterrows():
@@ -210,26 +209,17 @@ def _parse_assay_conditions(xls: pd.ExcelFile, sheet_name: str) -> list:
             if pd.isna(plate) or pd.isna(well):
                 continue
 
-            # Build the row data dictionary with all non-NaN values
-            row_data = {"Plate": str(plate), "Well": str(well)}
-
-            # Extract standard fields
-            for col in data_rows.columns:
-                if col in standard_fields and col not in ["Plate", "Well"]:
-                    if not pd.isna(row[col]):
-                        row_data[col] = row[col]
-
-            # Extract custom fields into conditions dictionary
+            # All columns except Plate and Well go into conditions
             conditions = {}
             for col in data_rows.columns:
-                if col not in standard_fields and not pd.isna(row[col]):
+                if col in ["Plate", "Well"]:
+                    continue
+                if not pd.isna(row[col]):
                     conditions[col] = row[col]
 
-            # Add conditions to row_data if there are any
-            if conditions:
-                row_data["conditions"] = conditions
-
-            assay_conditions.append(AssayCondition(**row_data))
+            assay_conditions.append(
+                AssayCondition(plate=str(plate), well=str(well), conditions=conditions)
+            )
 
         logger.info(f"Parsed {len(assay_conditions)} assay conditions from '{sheet_name}'")
         return assay_conditions

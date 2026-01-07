@@ -1,1 +1,1 @@
-"""Tests for mihcsme_omero package."""
+"""Tests for mihcsme_py package."""
