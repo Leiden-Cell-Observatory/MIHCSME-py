@@ -589,94 +589,94 @@ class ImageAcquisition(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class Channel(BaseModel):
+    """Single channel information for specimen imaging."""
+
+    visualization_method: Optional[str] = Field(
+        None, description="Visualization method (e.g., Hoechst staining, GFP)"
+    )
+    entity: Optional[str] = Field(None, description="Entity visualized (e.g., DNA, MAP1LC3B)")
+    label: Optional[str] = Field(None, description="Label used for entity (e.g., Nuclei, GFP-LC3)")
+    id: StringCoerced = Field(None, description="Sequential id of channel order in your image")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class Specimen(BaseModel):
-    """Specimen/channel information."""
+    """Specimen/channel information with dynamic channel support.
+
+    Channels are stored as a list internally but can be converted to/from
+    the flat Excel format (Channel 1 visualization method, etc.).
+    """
 
     channel_transmission_id: StringCoerced = Field(
         None,
         alias="Channel Transmission id",
         description="Channel id is dependent on different machines, first or last. If No transmission is acquired state NA",
     )
-    # Channel 1
-    channel_1_visualization_method: Optional[str] = Field(
-        None,
-        alias="Channel 1 visualization method",
-        description="Visualization method (example: Hoechst staining)",
-    )
-    channel_1_entity: Optional[str] = Field(
-        None, alias="Channel 1 entity", description="Entity visualized (example: DNA)"
-    )
-    channel_1_label: Optional[str] = Field(
-        None,
-        alias="Channel 1 label",
-        description="Label used for entity (example:Nuclei)",
-    )
-    channel_1_id: StringCoerced = Field(
-        None,
-        alias="Channel 1 id",
-        description="sequential id of channel order in your image",
-    )
-    # Channel 2
-    channel_2_visualization_method: Optional[str] = Field(
-        None,
-        alias="Channel 2 visualization method",
-        description="Visualization method (example: GFP)",
-    )
-    channel_2_entity: Optional[str] = Field(
-        None, alias="Channel 2 entity", description="Entity visualized (example: MAP1LC3B)"
-    )
-    channel_2_label: Optional[str] = Field(
-        None,
-        alias="Channel 2 label",
-        description="Label used for entity (example:GFP-LC3)",
-    )
-    channel_2_id: StringCoerced = Field(
-        None,
-        alias="Channel 2 id",
-        description="sequential id of channel order in your image",
-    )
-    # Channel 3
-    channel_3_visualization_method: Optional[str] = Field(
-        None,
-        alias="Channel 3 visualization method",
-        description="Visualization method (example: PI staining)",
-    )
-    channel_3_entity: Optional[str] = Field(
-        None,
-        alias="Channel 3 entity",
-        description="Entity visualized (example: Death cell DNA)",
-    )
-    channel_3_label: Optional[str] = Field(
-        None, alias="Channel 3 label", description="Label used for entity (example:PI)"
-    )
-    channel_3_id: StringCoerced = Field(
-        None,
-        alias="Channel 3 id",
-        description="sequential id of channel order in your image",
-    )
-    # Channel 4
-    channel_4_visualization_method: Optional[str] = Field(
-        None,
-        alias="Channel 4 visualization method",
-        description="Visualization method (example: Apoptotic marker Annexin V staining)",
-    )
-    channel_4_entity: Optional[str] = Field(
-        None,
-        alias="Channel 4 entity",
-        description="Entity visualized (example: Apoptotic cells)",
-    )
-    channel_4_label: Optional[str] = Field(
-        None,
-        alias="Channel 4 label",
-        description="Label used for entity (example:Annexin-V)",
-    )
-    channel_4_id: StringCoerced = Field(
-        None,
-        alias="Channel 4 id",
-        description="sequential id of channel order in your image",
+    channels: List[Channel] = Field(
+        default_factory=list,
+        description="List of channel information (supports up to 8 channels)",
     )
 
     model_config = ConfigDict(populate_by_name=True)
+
+    def to_flat_dict(self) -> Dict[str, Any]:
+        """Convert to flat dictionary format for Excel/OMERO export.
+
+        Returns:
+            Dictionary with keys like 'Channel Transmission id',
+            'Channel 1 visualization method', 'Channel 1 entity', etc.
+        """
+        result: Dict[str, Any] = {}
+
+        if self.channel_transmission_id:
+            result["Channel Transmission id"] = self.channel_transmission_id
+
+        for i, channel in enumerate(self.channels, start=1):
+            if channel.visualization_method:
+                result[f"Channel {i} visualization method"] = channel.visualization_method
+            if channel.entity:
+                result[f"Channel {i} entity"] = channel.entity
+            if channel.label:
+                result[f"Channel {i} label"] = channel.label
+            if channel.id:
+                result[f"Channel {i} id"] = channel.id
+
+        return result
+
+    @classmethod
+    def from_flat_dict(cls, data: Dict[str, Any]) -> "Specimen":
+        """Create Specimen from flat dictionary format (Excel/OMERO).
+
+        Args:
+            data: Dictionary with keys like 'Channel 1 visualization method', etc.
+
+        Returns:
+            Specimen instance with channels list populated
+        """
+        channel_transmission_id = data.get("Channel Transmission id")
+
+        # Parse channels (support up to 8)
+        channels = []
+        for i in range(1, 9):
+            vis_method = data.get(f"Channel {i} visualization method")
+            entity = data.get(f"Channel {i} entity")
+            label = data.get(f"Channel {i} label")
+            ch_id = data.get(f"Channel {i} id")
+
+            # Only add channel if it has any data
+            if any([vis_method, entity, label, ch_id]):
+                channels.append(
+                    Channel(
+                        visualization_method=vis_method,
+                        entity=entity,
+                        label=label,
+                        id=ch_id,
+                    )
+                )
+
+        return cls(channel_transmission_id=channel_transmission_id, channels=channels)
 
 
 class AssayInformation(BaseModel):
@@ -732,9 +732,9 @@ class AssayInformation(BaseModel):
             if data:
                 groups["ImageAcquisition"] = data
 
-        # Specimen group - automatically include all fields
+        # Specimen group - use to_flat_dict() for Excel/OMERO compatibility
         if self.specimen:
-            data = _model_to_dict_with_aliases(self.specimen)
+            data = self.specimen.to_flat_dict()
             if data:
                 groups["Specimen"] = data
 
@@ -768,10 +768,10 @@ class AssayInformation(BaseModel):
         if "ImageAcquisition" in groups:
             image_acquisition = ImageAcquisition(**groups["ImageAcquisition"])
 
-        # Parse Specimen
+        # Parse Specimen - use from_flat_dict() for Excel/OMERO compatibility
         specimen = None
         if "Specimen" in groups:
-            specimen = Specimen(**groups["Specimen"])
+            specimen = Specimen.from_flat_dict(groups["Specimen"])
 
         return cls(
             assay=assay,
