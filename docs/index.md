@@ -1,6 +1,6 @@
 # MIHCSME OMERO
 
-A modern Python package for converting MIHCSME (Minimum Information about a High Content Screening Microscopy Experiment) metadata from Excel spreadsheets to OMERO annotations.
+A Python package for handling MIHCSME (Minimum Information about a High Content Screening Microscopy Experiment) metadata from Excel spreadsheets to OMERO annotations and back.
 
 ## Features
 
