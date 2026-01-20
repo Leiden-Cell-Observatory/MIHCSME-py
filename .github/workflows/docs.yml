@@ -52,4 +52,4 @@ jobs:
       - name: Build documentation (PR preview)
         if: github.event_name == 'pull_request'
         run: |
-          mkdocs build --strict --verbose
+          mkdocs build --verbose

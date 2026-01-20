@@ -49,7 +49,7 @@ def _(parse_excel_to_model):
 
 @app.cell
 def _(original, pprint):
-    #print all_plates
+    # print all_plates
     all_plates = sorted({condition.plate for condition in original.assay_conditions})
     pprint(all_plates)
     return
@@ -57,20 +57,9 @@ def _(original, pprint):
 
 @app.cell
 def _(original, pd):
-    #list all well with treatments in a pandas table
-    # Convert to DataFrame for easy viewing
-    conditions_data = []
-    for condition in original.assay_conditions:
-        row = {
-            "Plate": condition.plate,
-            "Well": condition.well,
-            "Cell Line": condition.cell_line,
-            "Treatment": condition.treatment,
-            **condition.conditions,
-        }
-        conditions_data.append(row)
-
-    df = pd.DataFrame(conditions_data)
+    # list all well with treatments in a pandas table
+    # Convert to DataFrame using the built-in method
+    df = original.to_dataframe()
     print(f"📊 Assay Conditions ({len(df)} wells):\n")
     df.head(10)
     return
@@ -78,7 +67,7 @@ def _(original, pd):
 
 @app.cell
 def _(pd):
-    def plot_plate_layout(metadata, variable='treatment', plate_name=None):
+    def plot_plate_layout(metadata, variable="treatment", plate_name=None):
         """
         Display plate layout(s) in DataFrame format showing values in each well.
 
@@ -103,7 +92,7 @@ def _(pd):
             plates = [plate_name]
 
         # Define plate dimensions (standard 96-well plate)
-        rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+        rows = ["A", "B", "C", "D", "E", "F", "G", "H"]
         cols = [f"{i:02d}" for i in range(1, 13)]
 
         result = {}
@@ -116,13 +105,8 @@ def _(pd):
             well_values = {}
             for condition in plate_conditions:
                 well = condition.well
-                # Try to get the variable from the main attributes first
-                if hasattr(condition, variable):
-                    value = getattr(condition, variable)
-                elif variable in condition.conditions:
-                    value = condition.conditions[variable]
-                else:
-                    value = None
+                # Get value from conditions dict
+                value = condition.conditions.get(variable)
                 well_values[well] = value
 
             # Create DataFrame with row labels and column labels
@@ -167,13 +151,13 @@ def _(pd):
 @app.cell
 def _(display, original, plot_plate_layout):
     # Display all plates with their layouts
-    plates_dict = plot_plate_layout(original, variable='treatment')
+    plates_dict = plot_plate_layout(original, variable="treatment")
 
     # Show each plate
     for plate_name, plate_df in plates_dict.items():
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Plate: {plate_name}")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         display(plate_df)
         print()
     return
@@ -186,8 +170,12 @@ def _():
     from pprint import pprint
     import ezomero
 
-    from mihcsme_omero import parse_excel_to_model, upload_metadata_to_omero, download_metadata_from_omero
-    from mihcsme_omero.models import (
+    from mihcsme_py import (
+        parse_excel_to_model,
+        upload_metadata_to_omero,
+        download_metadata_from_omero,
+    )
+    from mihcsme_py.models import (
         MIHCSMEMetadata,
         AssayCondition,
         InvestigationInformation,

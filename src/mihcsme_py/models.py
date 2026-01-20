@@ -1,8 +1,71 @@
 """Pydantic models for MIHCSME metadata structure."""
 
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional
+
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+
+# ============================================================================
+# Reusable Validators
+# ============================================================================
+
+
+def _coerce_to_string(v: Any) -> Optional[str]:
+    """Convert any value to string, treating empty as None.
+
+    Handles special cases like datetime objects (uses isoformat).
+
+    Args:
+        v: Any value to convert
+
+    Returns:
+        String representation or None if empty
+    """
+    if v is None or v == "":
+        return None
+    if hasattr(v, "isoformat"):  # Handle datetime/Timestamp
+        return v.isoformat()
+    return str(v)
+
+
+def _validate_orcid(v: Optional[str]) -> Optional[str]:
+    """Validate ORCID URL format.
+
+    Args:
+        v: ORCID URL string
+
+    Returns:
+        Validated ORCID URL or None
+
+    Raises:
+        ValueError: If ORCID doesn't start with https://orcid.org/
+    """
+    if v is None or v == "":
+        return None
+    if not v.startswith("https://orcid.org/"):
+        raise ValueError("ORCID must be a URL starting with https://orcid.org/")
+    return v
+
+
+# ============================================================================
+# Annotated Types for Common Patterns
+# ============================================================================
+
+# String that auto-coerces from numbers, dates, etc.
+StringCoerced = Annotated[Optional[str], BeforeValidator(_coerce_to_string)]
+
+# ORCID URL with validation
+OrcidUrl = Annotated[Optional[str], BeforeValidator(_validate_orcid)]
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
 
 
 def _model_to_dict_with_aliases(model: BaseModel) -> Dict[str, Any]:
@@ -18,7 +81,8 @@ def _model_to_dict_with_aliases(model: BaseModel) -> Dict[str, Any]:
         Dictionary with alias names as keys and field values
     """
     result = {}
-    for field_name, field_info in model.model_fields.items():
+    # Access model_fields from the class, not the instance
+    for field_name, field_info in model.__class__.model_fields.items():
         value = getattr(model, field_name)
         if value is not None and value != "":
             # Use the alias if defined, otherwise use field name
@@ -40,9 +104,7 @@ class DataOwner(BaseModel):
         None, alias="Middle Name(s)", description="Middle Name(s) if any"
     )
     last_name: Optional[str] = Field(None, alias="Last Name", description="Last Name")
-    user_name: Optional[str] = Field(
-        None, alias="User name", description="Institutional user name"
-    )
+    user_name: Optional[str] = Field(None, alias="User name", description="Institutional user name")
     institute: Optional[str] = Field(
         None,
         alias="Institute",
@@ -51,51 +113,31 @@ class DataOwner(BaseModel):
     email: Optional[str] = Field(
         None, alias="E-Mail Address", description="Institution email address"
     )
-    orcid: Optional[str] = Field(
+    orcid: OrcidUrl = Field(
         None,
         alias="ORCID investigator",
         description="ORCID ID as URL, e.g. https://orcid.org/0000-0002-3704-3675",
     )
 
-    model_config = {"populate_by_name": True}
-
-    @field_validator("orcid")
-    @classmethod
-    def validate_orcid(cls, v: Optional[str]) -> Optional[str]:
-        """Validate ORCID format."""
-        if v is None or v == "":
-            return None
-        if not v.startswith("https://orcid.org/"):
-            raise ValueError("ORCID must be a URL starting with https://orcid.org/")
-        return v
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class DataCollaborator(BaseModel):
     """Data collaborator information."""
 
-    orcid: Optional[str] = Field(
+    orcid: OrcidUrl = Field(
         None,
         alias="ORCID  Data Collaborator",
         description="ORCID ID of collaborator with experimental, collection or analysis part of this investigation",
     )
 
-    model_config = {"populate_by_name": True}
-
-    @field_validator("orcid")
-    @classmethod
-    def validate_orcid(cls, v: Optional[str]) -> Optional[str]:
-        """Validate ORCID format."""
-        if v is None or v == "":
-            return None
-        if not v.startswith("https://orcid.org/"):
-            raise ValueError("ORCID must be a URL starting with https://orcid.org/")
-        return v
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class InvestigationInfo(BaseModel):
     """Core investigation information."""
 
-    project_id: Optional[str] = Field(
+    project_id: StringCoerced = Field(
         None, alias="Project ID", description="EU/NWO/consortium ID – Examples: EuTOX"
     )
     investigation_title: Optional[str] = Field(
@@ -103,7 +145,7 @@ class InvestigationInfo(BaseModel):
         alias="Investigation Title",
         description="High level concept to link related studies",
     )
-    investigation_internal_id: Optional[str] = Field(
+    investigation_internal_id: StringCoerced = Field(
         None,
         alias="Investigation internal ID",
         description="Corresponding internal ID for your investigation",
@@ -114,15 +156,7 @@ class InvestigationInfo(BaseModel):
         description="Short description for your investigation",
     )
 
-    model_config = {"populate_by_name": True}
-
-    @field_validator("project_id", "investigation_internal_id", mode="before")
-    @classmethod
-    def coerce_to_string(cls, v: Any) -> Optional[str]:
-        """Convert numbers and other types to string."""
-        if v is None or v == "":
-            return None
-        return str(v)
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class InvestigationInformation(BaseModel):
@@ -168,9 +202,7 @@ class InvestigationInformation(BaseModel):
         return groups
 
     @classmethod
-    def from_groups_dict(
-        cls, groups: Dict[str, Dict[str, Any]]
-    ) -> "InvestigationInformation":
+    def from_groups_dict(cls, groups: Dict[str, Dict[str, Any]]) -> "InvestigationInformation":
         """Create from groups dictionary format."""
         # Parse DataOwner
         data_owner = None
@@ -195,9 +227,9 @@ class InvestigationInformation(BaseModel):
             investigation_info=investigation_info,
         )
 
-    class Config:
-        extra = "allow"
-        json_schema_extra = {
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
             "example": {
                 "data_owner": {
                     "first_name": "Jane",
@@ -210,7 +242,8 @@ class InvestigationInformation(BaseModel):
                     "project_id": "EuTOX",
                 },
             }
-        }
+        },
+    )
 
 
 class Study(BaseModel):
@@ -221,7 +254,7 @@ class Study(BaseModel):
         alias="Study Title",
         description="Manuscript/chapter/publication/paragraph title describing purpose or intention for one or multiple assays",
     )
-    study_internal_id: Optional[str] = Field(
+    study_internal_id: StringCoerced = Field(
         None, alias="Study internal ID", description="Study ID, linked to ELN or lab journal"
     )
     study_description: Optional[str] = Field(
@@ -235,15 +268,7 @@ class Study(BaseModel):
         description="List of key words associated with your study (EFO-terms)",
     )
 
-    model_config = {"populate_by_name": True}
-
-    @field_validator("study_internal_id", mode="before")
-    @classmethod
-    def coerce_to_string(cls, v: Any) -> Optional[str]:
-        """Convert numbers and other types to string."""
-        if v is None or v == "":
-            return None
-        return str(v)
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Biosample(BaseModel):
@@ -262,21 +287,13 @@ class Biosample(BaseModel):
         alias="Biosample Organism",
         description="Which organism is your cell lines or tissue from. Examples: Human or mouse",
     )
-    number_of_cell_lines_used: Optional[str] = Field(
+    number_of_cell_lines_used: StringCoerced = Field(
         None,
         alias="Number of cell lines used",
         description="In case multiple cell lines are used indicate here",
     )
 
-    model_config = {"populate_by_name": True}
-
-    @field_validator("number_of_cell_lines_used", mode="before")
-    @classmethod
-    def coerce_to_string(cls, v: Any) -> Optional[str]:
-        """Convert numbers and other types to string."""
-        if v is None or v == "":
-            return None
-        return str(v)
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Library(BaseModel):
@@ -292,7 +309,7 @@ class Library(BaseModel):
     library_manufacturer: Optional[str] = Field(
         None, alias="Library Manufacturer", description="Library file info"
     )
-    library_version: Optional[str] = Field(
+    library_version: StringCoerced = Field(
         None, alias="Library Version", description="Library file info"
     )
     library_experimental_conditions: Optional[str] = Field(
@@ -306,18 +323,7 @@ class Library(BaseModel):
         description="A brief description of the kind of quality control measures that were taken",
     )
 
-    model_config = {"populate_by_name": True}
-
-    @field_validator("library_version", mode="before")
-    @classmethod
-    def coerce_to_string(cls, v: Any) -> Optional[str]:
-        """Convert any type (including dates) to string."""
-        if v is None or v == "":
-            return None
-        # Handle pandas Timestamp or datetime objects
-        if hasattr(v, "isoformat"):
-            return v.isoformat()
-        return str(v)
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Protocols(BaseModel):
@@ -344,7 +350,7 @@ class Protocols(BaseModel):
         description="Url/doi protocols.io or ELN associated url. At least SOP/protocol filename",
     )
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Plate(BaseModel):
@@ -354,19 +360,11 @@ class Plate(BaseModel):
     plate_type_manufacturer: Optional[str] = Field(
         None, alias="Plate type Manufacturer", description="Example: Greiner Bio-One"
     )
-    plate_type_catalog_number: Optional[str] = Field(
+    plate_type_catalog_number: StringCoerced = Field(
         None, alias="Plate type Catalog number", description="Example: 781081"
     )
 
-    model_config = {"populate_by_name": True}
-
-    @field_validator("plate_type_catalog_number", mode="before")
-    @classmethod
-    def coerce_to_string(cls, v: Any) -> Optional[str]:
-        """Convert numbers and other types to string."""
-        if v is None or v == "":
-            return None
-        return str(v)
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class StudyInformation(BaseModel):
@@ -451,9 +449,9 @@ class StudyInformation(BaseModel):
             study=study, biosample=biosample, library=library, protocols=protocols, plate=plate
         )
 
-    class Config:
-        extra = "allow"
-        json_schema_extra = {
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
             "example": {
                 "study": {
                     "study_title": "Example Study",
@@ -461,14 +459,15 @@ class StudyInformation(BaseModel):
                 },
                 "biosample": {"biosample_organism": "Human"},
             }
-        }
+        },
+    )
 
 
 class Assay(BaseModel):
     """Assay information."""
 
     assay_title: Optional[str] = Field(None, alias="Assay Title", description="Screen name")
-    assay_internal_id: Optional[str] = Field(
+    assay_internal_id: StringCoerced = Field(
         None,
         alias="Assay internal ID",
         description="Experimental ID, e.g. aMV-010, linked to ELN or labjournal",
@@ -478,12 +477,12 @@ class Assay(BaseModel):
         alias="Assay Description",
         description="Description of screen plus additional unstructured information",
     )
-    assay_number_of_biological_replicates: Optional[str] = Field(
+    assay_number_of_biological_replicates: StringCoerced = Field(
         None,
         alias="Assay number of biological replicates",
         description="Total number of biol. Repl.",
     )
-    number_of_plates: Optional[str] = Field(
+    number_of_plates: StringCoerced = Field(
         None, alias="Number of plates", description="Total number of plates, n-plates"
     )
     assay_technology_type: Optional[str] = Field(
@@ -503,20 +502,7 @@ class Assay(BaseModel):
         None, alias="Assay data URL", description="OMERO url link to this screen"
     )
 
-    model_config = {"populate_by_name": True}
-
-    @field_validator(
-        "assay_internal_id",
-        "assay_number_of_biological_replicates",
-        "number_of_plates",
-        mode="before",
-    )
-    @classmethod
-    def coerce_to_string(cls, v: Any) -> Optional[str]:
-        """Convert numbers and other types to string."""
-        if v is None or v == "":
-            return None
-        return str(v)
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class AssayComponent(BaseModel):
@@ -533,7 +519,7 @@ class AssayComponent(BaseModel):
         description="Sample preparation method (Formaldahyde (PFA) fixed tissue, Live cells, unfixed tissue)",
     )
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class BiosampleAssay(BaseModel):
@@ -544,200 +530,153 @@ class BiosampleAssay(BaseModel):
         alias="Cell lines storage location",
         description="Storage location according to Database used or at least location",
     )
-    cell_lines_clone_number: Optional[str] = Field(
+    cell_lines_clone_number: StringCoerced = Field(
         None, alias="Cell lines clone number", description="Storage location DB info"
     )
-    cell_lines_passage_number: Optional[str] = Field(
+    cell_lines_passage_number: StringCoerced = Field(
         None,
         alias="Cell lines Passage number",
         description="Passage number of your cells",
     )
 
-    model_config = {"populate_by_name": True}
-
-    @field_validator("cell_lines_clone_number", "cell_lines_passage_number", mode="before")
-    @classmethod
-    def coerce_to_string(cls, v: Any) -> Optional[str]:
-        """Convert numbers and other types to string."""
-        if v is None or v == "":
-            return None
-        return str(v)
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ImageData(BaseModel):
     """Image data information."""
 
-    image_number_of_pixelsx: Optional[str] = Field(
+    image_number_of_pixelsx: StringCoerced = Field(
         None,
         alias="Image number of pixelsX",
         description="Indicate number of pixels in x in images",
     )
-    image_number_of_pixelsy: Optional[str] = Field(
+    image_number_of_pixelsy: StringCoerced = Field(
         None,
         alias="Image number of pixelsY",
         description="Indicate number of pixels in y in images",
     )
-    image_number_of_z_stacks: Optional[str] = Field(
+    image_number_of_z_stacks: StringCoerced = Field(
         None,
         alias="Image number of  z-stacks",
         description="Indicate number z stacks in image, single image is z=1",
     )
-    image_number_of_channels: Optional[str] = Field(
+    image_number_of_channels: StringCoerced = Field(
         None,
         alias="Image number of channels",
         description="Indicate number of channels in your image",
     )
-    image_number_of_timepoints: Optional[str] = Field(
+    image_number_of_timepoints: StringCoerced = Field(
         None,
         alias="Image number of timepoints",
         description="Indicate number of time point(s) in your image",
     )
-    image_sites_per_well: Optional[str] = Field(
+    image_sites_per_well: StringCoerced = Field(
         None, alias="Image sites per well", description="Number of fields, numeric value"
     )
 
-    model_config = {"populate_by_name": True}
-
-    @field_validator(
-        "image_number_of_pixelsx",
-        "image_number_of_pixelsy",
-        "image_number_of_z_stacks",
-        "image_number_of_channels",
-        "image_number_of_timepoints",
-        "image_sites_per_well",
-        mode="before",
-    )
-    @classmethod
-    def coerce_to_string(cls, v: Any) -> Optional[str]:
-        """Convert numbers and other types to string."""
-        if v is None or v == "":
-            return None
-        return str(v)
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ImageAcquisition(BaseModel):
     """Image acquisition information."""
 
-    microscope_id: Optional[str] = Field(
+    microscope_id: StringCoerced = Field(
         None,
         alias="Microscope id",
         description="Url to micrometa app file link or other url describing your microscope",
     )
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True)
 
-    @field_validator("microscope_id", mode="before")
-    @classmethod
-    def coerce_to_string(cls, v: Any) -> Optional[str]:
-        """Convert numbers and other types to string."""
-        if v is None or v == "":
-            return None
-        return str(v)
+
+class Channel(BaseModel):
+    """Single channel information for specimen imaging."""
+
+    visualization_method: Optional[str] = Field(
+        None, description="Visualization method (e.g., Hoechst staining, GFP)"
+    )
+    entity: Optional[str] = Field(None, description="Entity visualized (e.g., DNA, MAP1LC3B)")
+    label: Optional[str] = Field(None, description="Label used for entity (e.g., Nuclei, GFP-LC3)")
+    id: StringCoerced = Field(None, description="Sequential id of channel order in your image")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Specimen(BaseModel):
-    """Specimen/channel information."""
+    """Specimen/channel information with dynamic channel support.
 
-    channel_transmission_id: Optional[str] = Field(
+    Channels are stored as a list internally but can be converted to/from
+    the flat Excel format (Channel 1 visualization method, etc.).
+    """
+
+    channel_transmission_id: StringCoerced = Field(
         None,
         alias="Channel Transmission id",
         description="Channel id is dependent on different machines, first or last. If No transmission is acquired state NA",
     )
-    # Channel 1
-    channel_1_visualization_method: Optional[str] = Field(
-        None,
-        alias="Channel 1 visualization method",
-        description="Visualization method (example: Hoechst staining)",
-    )
-    channel_1_entity: Optional[str] = Field(
-        None, alias="Channel 1 entity", description="Entity visualized (example: DNA)"
-    )
-    channel_1_label: Optional[str] = Field(
-        None,
-        alias="Channel 1 label",
-        description="Label used for entity (example:Nuclei)",
-    )
-    channel_1_id: Optional[str] = Field(
-        None,
-        alias="Channel 1 id",
-        description="sequential id of channel order in your image",
-    )
-    # Channel 2
-    channel_2_visualization_method: Optional[str] = Field(
-        None,
-        alias="Channel 2 visualization method",
-        description="Visualization method (example: GFP)",
-    )
-    channel_2_entity: Optional[str] = Field(
-        None, alias="Channel 2 entity", description="Entity visualized (example: MAP1LC3B)"
-    )
-    channel_2_label: Optional[str] = Field(
-        None,
-        alias="Channel 2 label",
-        description="Label used for entity (example:GFP-LC3)",
-    )
-    channel_2_id: Optional[str] = Field(
-        None,
-        alias="Channel 2 id",
-        description="sequential id of channel order in your image",
-    )
-    # Channel 3
-    channel_3_visualization_method: Optional[str] = Field(
-        None,
-        alias="Channel 3 visualization method",
-        description="Visualization method (example: PI staining)",
-    )
-    channel_3_entity: Optional[str] = Field(
-        None,
-        alias="Channel 3 entity",
-        description="Entity visualized (example: Death cell DNA)",
-    )
-    channel_3_label: Optional[str] = Field(
-        None, alias="Channel 3 label", description="Label used for entity (example:PI)"
-    )
-    channel_3_id: Optional[str] = Field(
-        None,
-        alias="Channel 3 id",
-        description="sequential id of channel order in your image",
-    )
-    # Channel 4
-    channel_4_visualization_method: Optional[str] = Field(
-        None,
-        alias="Channel 4 visualization method",
-        description="Visualization method (example: Apoptotic marker Annexin V staining)",
-    )
-    channel_4_entity: Optional[str] = Field(
-        None,
-        alias="Channel 4 entity",
-        description="Entity visualized (example: Apoptotic cells)",
-    )
-    channel_4_label: Optional[str] = Field(
-        None,
-        alias="Channel 4 label",
-        description="Label used for entity (example:Annexin-V)",
-    )
-    channel_4_id: Optional[str] = Field(
-        None,
-        alias="Channel 4 id",
-        description="sequential id of channel order in your image",
+    channels: List[Channel] = Field(
+        default_factory=list,
+        description="List of channel information (supports up to 8 channels)",
     )
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True)
 
-    @field_validator(
-        "channel_transmission_id",
-        "channel_1_id",
-        "channel_2_id",
-        "channel_3_id",
-        "channel_4_id",
-        mode="before",
-    )
+    def to_flat_dict(self) -> Dict[str, Any]:
+        """Convert to flat dictionary format for Excel/OMERO export.
+
+        Returns:
+            Dictionary with keys like 'Channel Transmission id',
+            'Channel 1 visualization method', 'Channel 1 entity', etc.
+        """
+        result: Dict[str, Any] = {}
+
+        if self.channel_transmission_id:
+            result["Channel Transmission id"] = self.channel_transmission_id
+
+        for i, channel in enumerate(self.channels, start=1):
+            if channel.visualization_method:
+                result[f"Channel {i} visualization method"] = channel.visualization_method
+            if channel.entity:
+                result[f"Channel {i} entity"] = channel.entity
+            if channel.label:
+                result[f"Channel {i} label"] = channel.label
+            if channel.id:
+                result[f"Channel {i} id"] = channel.id
+
+        return result
+
     @classmethod
-    def coerce_to_string(cls, v: Any) -> Optional[str]:
-        """Convert numbers and other types to string."""
-        if v is None or v == "":
-            return None
-        return str(v)
+    def from_flat_dict(cls, data: Dict[str, Any]) -> "Specimen":
+        """Create Specimen from flat dictionary format (Excel/OMERO).
+
+        Args:
+            data: Dictionary with keys like 'Channel 1 visualization method', etc.
+
+        Returns:
+            Specimen instance with channels list populated
+        """
+        channel_transmission_id = data.get("Channel Transmission id")
+
+        # Parse channels (support up to 8)
+        channels = []
+        for i in range(1, 9):
+            vis_method = data.get(f"Channel {i} visualization method")
+            entity = data.get(f"Channel {i} entity")
+            label = data.get(f"Channel {i} label")
+            ch_id = data.get(f"Channel {i} id")
+
+            # Only add channel if it has any data
+            if any([vis_method, entity, label, ch_id]):
+                channels.append(
+                    Channel(
+                        visualization_method=vis_method,
+                        entity=entity,
+                        label=label,
+                        id=ch_id,
+                    )
+                )
+
+        return cls(channel_transmission_id=channel_transmission_id, channels=channels)
 
 
 class AssayInformation(BaseModel):
@@ -793,9 +732,9 @@ class AssayInformation(BaseModel):
             if data:
                 groups["ImageAcquisition"] = data
 
-        # Specimen group - automatically include all fields
+        # Specimen group - use to_flat_dict() for Excel/OMERO compatibility
         if self.specimen:
-            data = _model_to_dict_with_aliases(self.specimen)
+            data = self.specimen.to_flat_dict()
             if data:
                 groups["Specimen"] = data
 
@@ -829,10 +768,10 @@ class AssayInformation(BaseModel):
         if "ImageAcquisition" in groups:
             image_acquisition = ImageAcquisition(**groups["ImageAcquisition"])
 
-        # Parse Specimen
+        # Parse Specimen - use from_flat_dict() for Excel/OMERO compatibility
         specimen = None
         if "Specimen" in groups:
-            specimen = Specimen(**groups["Specimen"])
+            specimen = Specimen.from_flat_dict(groups["Specimen"])
 
         return cls(
             assay=assay,
@@ -843,9 +782,9 @@ class AssayInformation(BaseModel):
             specimen=specimen,
         )
 
-    class Config:
-        extra = "allow"
-        json_schema_extra = {
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
             "example": {
                 "assay": {
                     "assay_title": "Example Screen",
@@ -853,61 +792,44 @@ class AssayInformation(BaseModel):
                 },
                 "image_data": {"image_number_of_channels": "3"},
             }
-        }
+        },
+    )
 
 
 class AssayCondition(BaseModel):
     """Single well condition from AssayConditions sheet.
 
-    This model supports both standard fields (Treatment, Dose, etc.) and
-    custom fields via the conditions dictionary.
+    All metadata fields (Treatment, Dose, CellLine, etc.) are stored in the
+    conditions dictionary for maximum flexibility.
+
+    Attributes:
+        plate: Plate identifier/name
+        well: Well identifier (e.g., A01, B12) - auto-normalized
+        conditions: Dictionary of all metadata key-value pairs for this well
     """
 
-    # Required fields
-    plate: str = Field(..., alias="Plate", description="Plate identifier/name")
-    well: str = Field(..., alias="Well", description="Well identifier (e.g., A01, B12)")
-
-    # Common optional fields with type safety
-    treatment: Optional[str] = Field(
-        None, alias="Treatment", description="Treatment applied to this well"
-    )
-    dose: Optional[str] = Field(None, alias="Dose", description="Dose of treatment")
-    dose_unit: Optional[str] = Field(
-        None, alias="DoseUnit", description="Unit of dose (e.g., µM, nM)"
-    )
-    cell_line: Optional[str] = Field(
-        None, alias="CellLine", description="Cell line used in this well"
-    )
-    time_treatment: Optional[str] = Field(
-        None, alias="TimeTreatment", description="Duration of treatment"
-    )
-    repl_id: Optional[str] = Field(
-        None, alias="ReplID", description="Replicate identifier"
-    )
-    remarks: Optional[str] = Field(None, alias="remarks", description="Additional remarks")
-
-    # Flexible dictionary for any additional custom fields
+    plate: str = Field(..., description="Plate identifier/name")
+    well: str = Field(..., description="Well identifier (e.g., A01, B12)")
     conditions: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Additional custom metadata fields for this well",
+        description="All metadata fields for this well (Treatment, Dose, etc.)",
     )
 
-    model_config = {
-        "populate_by_name": True,
-        "json_schema_extra": {
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
             "example": {
                 "plate": "Plate1",
                 "well": "A01",
-                "treatment": "DMSO",
-                "dose": "0.1",
-                "dose_unit": "µM",
                 "conditions": {
-                    "CustomField1": "Value1",
-                    "CustomField2": "Value2",
+                    "Treatment": "DMSO",
+                    "Dose": "0.1",
+                    "DoseUnit": "µM",
+                    "CellLine": "HeLa",
                 },
             }
         },
-    }
+    )
 
     @field_validator("well")
     @classmethod
@@ -932,22 +854,12 @@ class AssayCondition(BaseModel):
             raise ValueError(f"Invalid well format: {v}")
 
     def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert AssayCondition to a flat dictionary for upload/export.
-
-        Returns all fields (using field aliases/capitalized names) plus custom conditions.
-        This is used by both to_dataframe() and upload functions.
+        """Convert AssayCondition to a flat dictionary for upload/export.
 
         Returns:
-            Dictionary with Plate, Well, Treatment, Dose, etc. (using aliases)
+            Dictionary with Plate, Well, and all condition fields
         """
-        # Use model_dump with by_alias=True to get capitalized field names
-        row_data = self.model_dump(by_alias=True, exclude_none=True, exclude={"conditions"})
-
-        # Add any additional custom fields from conditions dict
-        row_data.update(self.conditions)
-
-        return row_data
+        return {"Plate": self.plate, "Well": self.well, **self.conditions}
 
 
 class ReferenceSheet(BaseModel):
@@ -959,8 +871,8 @@ class ReferenceSheet(BaseModel):
         description="Key-value pairs from reference sheet",
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "_Organisms",
                 "data": {
@@ -969,6 +881,7 @@ class ReferenceSheet(BaseModel):
                 },
             }
         }
+    )
 
 
 class MIHCSMEMetadata(BaseModel):
@@ -1004,33 +917,9 @@ class MIHCSMEMetadata(BaseModel):
         if self.assay_information:
             result["AssayInformation"] = self.assay_information.groups
 
-        # Convert Assay Conditions to list of dicts
+        # Convert Assay Conditions to list of dicts using to_dict()
         if self.assay_conditions:
-            conditions_list = []
-            for condition in self.assay_conditions:
-                condition_dict = {
-                    "Plate": condition.plate,
-                    "Well": condition.well,
-                }
-                # Add standard fields if they exist
-                if condition.treatment:
-                    condition_dict["Treatment"] = condition.treatment
-                if condition.dose:
-                    condition_dict["Dose"] = condition.dose
-                if condition.dose_unit:
-                    condition_dict["DoseUnit"] = condition.dose_unit
-                if condition.cell_line:
-                    condition_dict["CellLine"] = condition.cell_line
-                if condition.time_treatment:
-                    condition_dict["TimeTreatment"] = condition.time_treatment
-                if condition.repl_id:
-                    condition_dict["ReplID"] = condition.repl_id
-                if condition.remarks:
-                    condition_dict["remarks"] = condition.remarks
-                # Add custom fields from conditions dict
-                condition_dict.update(condition.conditions)
-                conditions_list.append(condition_dict)
-            result["AssayConditions"] = conditions_list
+            result["AssayConditions"] = [c.to_dict() for c in self.assay_conditions]
 
         # Add reference sheets
         for ref_sheet in self.reference_sheets:
@@ -1065,33 +954,13 @@ class MIHCSMEMetadata(BaseModel):
 
         assay_conditions = []
         if "AssayConditions" in data and isinstance(data["AssayConditions"], list):
-            standard_fields = {
-                "Plate",
-                "Well",
-                "Treatment",
-                "Dose",
-                "DoseUnit",
-                "CellLine",
-                "TimeTreatment",
-                "ReplID",
-                "remarks",
-            }
             for condition_dict in data["AssayConditions"]:
-                # Separate standard fields from custom fields
-                row_data = {}
-                conditions = {}
-
-                for k, v in condition_dict.items():
-                    if k in standard_fields:
-                        row_data[k] = v
-                    else:
-                        conditions[k] = v
-
-                # Add conditions dict if there are custom fields
-                if conditions:
-                    row_data["conditions"] = conditions
-
-                assay_conditions.append(AssayCondition(**row_data))
+                plate = condition_dict.pop("Plate", "")
+                well = condition_dict.pop("Well", "")
+                # All remaining fields go into conditions
+                assay_conditions.append(
+                    AssayCondition(plate=plate, well=well, conditions=condition_dict)
+                )
 
         reference_sheets = []
         for key, value in data.items():
@@ -1154,7 +1023,7 @@ class MIHCSMEMetadata(BaseModel):
         )
 
     @classmethod
-    def from_dataframe(cls, df: "pd.DataFrame", **kwargs) -> "MIHCSMEMetadata":
+    def from_dataframe(cls, df: "pd.DataFrame", **kwargs: Any) -> "MIHCSMEMetadata":
         """
         Create MIHCSMEMetadata from a pandas DataFrame of assay conditions.
 
@@ -1215,8 +1084,8 @@ class MIHCSMEMetadata(BaseModel):
 
         return cls(assay_conditions=assay_conditions, **kwargs)
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "investigation_information": {
                     "groups": {
@@ -1234,3 +1103,45 @@ class MIHCSMEMetadata(BaseModel):
                 ],
             }
         }
+    )
+
+
+class MIHCSMEMetadataLLM(BaseModel):
+    """Subset of MIHCSMEMetadata for LLM extraction.
+
+    This model excludes assay_conditions and reference_sheets as they are
+    too large/complex for LLM context. Use this model when passing metadata
+    schema to an LLM for extraction or modification.
+    """
+
+    investigation_information: Optional[InvestigationInformation] = None
+    study_information: Optional[StudyInformation] = None
+    assay_information: Optional[AssayInformation] = None
+
+    def to_full_metadata(
+        self,
+        assay_conditions: Optional[List[AssayCondition]] = None,
+        reference_sheets: Optional[List[ReferenceSheet]] = None,
+    ) -> MIHCSMEMetadata:
+        """Convert to full MIHCSMEMetadata with optional conditions.
+
+        Args:
+            assay_conditions: Optional list of assay conditions to include
+            reference_sheets: Optional list of reference sheets to include
+
+        Returns:
+            Full MIHCSMEMetadata instance
+        """
+        return MIHCSMEMetadata(
+            investigation_information=self.investigation_information,
+            study_information=self.study_information,
+            assay_information=self.assay_information,
+            assay_conditions=assay_conditions or [],
+            reference_sheets=reference_sheets or [],
+        )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "description": "MIHCSME metadata for LLM extraction (excludes per-well assay conditions)"
+        }
+    )

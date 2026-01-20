@@ -86,9 +86,9 @@ def upload_metadata_to_omero(
             logger.info(f"Removed {removal_count} existing annotations")
 
         # 1. Apply Object-Level Metadata (Screen or Plate level)
-        logger.info(f"\n{'='*80}")
+        logger.info(f"\n{'=' * 80}")
         logger.info(f"UPLOADING METADATA TO {target_type} (ID: {target_id})")
-        logger.info(f"{'='*80}")
+        logger.info(f"{'=' * 80}")
 
         # Apply Investigation Information
         if metadata.investigation_information:
@@ -178,9 +178,9 @@ def upload_metadata_to_omero(
                 )
 
         # Determine final status
-        logger.info(f"\n{'='*80}")
+        logger.info(f"\n{'=' * 80}")
         logger.info("UPLOAD SUMMARY")
-        logger.info(f"{'='*80}")
+        logger.info(f"{'=' * 80}")
 
         if processed_ok:
             summary["status"] = "success"
@@ -208,7 +208,7 @@ def upload_metadata_to_omero(
         logger.info(f"Wells succeeded: {summary['wells_succeeded']}")
         logger.info(f"Wells failed: {summary['wells_failed']}")
         logger.info(f"Status: {summary['status'].upper()}")
-        logger.info(f"{'='*80}\n")
+        logger.info(f"{'=' * 80}\n")
 
         logger.info(f"Annotation process finished for {target_type} {target_id}")
 
@@ -283,9 +283,7 @@ def _apply_grouped_metadata(
     return success
 
 
-def _get_plates_to_process(
-    conn: BlitzGateway, target_type: str, target_id: int
-) -> list:
+def _get_plates_to_process(conn: BlitzGateway, target_type: str, target_id: int) -> list:
     """Get list of plates to process based on target type."""
     if target_type == "Screen":
         screen = conn.getObject("Screen", target_id)
@@ -457,9 +455,9 @@ def _remove_metadata_recursive(
     Returns:
         Total number of annotations removed
     """
-    logger.info(f"\n{'='*80}")
+    logger.info(f"\n{'=' * 80}")
     logger.info(f"REMOVING ANNOTATIONS (namespace: {namespace})")
-    logger.info(f"{'='*80}")
+    logger.info(f"{'=' * 80}")
 
     total_removed = 0
 
@@ -492,13 +490,13 @@ def _remove_metadata_recursive(
                     well_removed = 0
                     for well in wells:
                         well_id = well.getId()
-                        removed = delete_annotations_from_object(
-                            conn, "Well", well_id, namespace
-                        )
+                        removed = delete_annotations_from_object(conn, "Well", well_id, namespace)
                         well_removed += removed
 
                     total_removed += well_removed
-                    logger.info(f"    → Removed {well_removed} annotation(s) from {len(wells)} well(s)")
+                    logger.info(
+                        f"    → Removed {well_removed} annotation(s) from {len(wells)} well(s)"
+                    )
 
     # If Plate, process wells
     elif target_type == "Plate":
@@ -517,9 +515,9 @@ def _remove_metadata_recursive(
             total_removed += well_removed
             logger.info(f"  → Removed {well_removed} annotation(s) from {len(wells)} well(s)")
 
-    logger.info(f"\n{'='*80}")
+    logger.info(f"\n{'=' * 80}")
     logger.info(f"REMOVAL COMPLETE: {total_removed} total annotations removed")
-    logger.info(f"{'='*80}\n")
+    logger.info(f"{'=' * 80}\n")
 
     return total_removed
 
@@ -543,7 +541,7 @@ def download_metadata_from_omero(
         MIHCSMEMetadata instance populated with data from OMERO
 
     Example:
-        >>> from mihcsme_omero import download_metadata_from_omero
+        >>> from mihcsme_py import download_metadata_from_omero
         >>> import ezomero
         >>>
         >>> conn = ezomero.connect("omero.example.com", "user", "password")
@@ -739,9 +737,7 @@ def _organize_into_groups(flat_dict: Dict[str, Any]) -> Dict[str, Dict[str, Any]
     return groups
 
 
-def _get_well_metadata(
-    well, namespace: str, plate_name: str
-) -> Dict[str, Any]:
+def _get_well_metadata(well, namespace: str, plate_name: str) -> Dict[str, Any]:
     """
     Extract metadata from a well.
 

@@ -16,7 +16,7 @@ py_require("ezomero[tables]") #make use of pandas tables
 #ezomero <- import("pandas",convert = FALSE)
 ezomero <- import("ezomero",convert = FALSE)
 py_require("mihcsme-py@git+https://github.com/Leiden-Cell-Observatory/mihcsme-py.git")
-mihcsme <- import("mihcsme_omero")
+mihcsme <- import("mihcsme_py")
 
 #fetch template from Rspace
 api_status()

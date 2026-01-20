@@ -5,9 +5,9 @@ Upload_MIHCSME_Metadata.py
 Uploads MIHCSME (Minimum Information about a High Content Screening
 Microscopy Experiment) metadata from an Excel file to OMERO Plates or Screens.
 
-Reference: Hosseini, Rohola, Matthijs Vlasveld, Joost Willemse, Bob Van De Water, 
-Sylvia E. Le Dévédec, and Katherine J. Wolstencroft. 
-“FAIR High Content Screening in Bioimaging.” Scientific Data 10, no. 1 (2023): 
+Reference: Hosseini, Rohola, Matthijs Vlasveld, Joost Willemse, Bob Van De Water,
+Sylvia E. Le Dévédec, and Katherine J. Wolstencroft.
+“FAIR High Content Screening in Bioimaging.” Scientific Data 10, no. 1 (2023):
 462. https://doi.org/10.1038/s41597-023-02367-w.
 
 This script parses a MIHCSME-formatted Excel file and creates Key-Value pair
@@ -45,6 +45,7 @@ from pathlib import Path
 # Import the MIHCSME package
 try:
     from mihcsme_py import parse_excel_to_model, upload_metadata_to_omero
+
     MIHCSME_AVAILABLE = True
 except ImportError:
     MIHCSME_AVAILABLE = False
@@ -83,11 +84,11 @@ def download_file_annotation(conn, file_ann_id):
     print(f"Downloading file: {file_name} ({file_size} bytes)")
 
     # Create temporary file
-    tmp_dir = tempfile.mkdtemp(prefix='MIHCSME_upload_')
+    tmp_dir = tempfile.mkdtemp(prefix="MIHCSME_upload_")
     tmp_path = Path(tmp_dir) / file_name
 
     # Download the file
-    with open(tmp_path, 'wb') as f:
+    with open(tmp_path, "wb") as f:
         for chunk in orig_file.getFileInChunks():
             f.write(chunk)
 
@@ -108,8 +109,8 @@ def main_loop(conn, script_params):
     """
     if not MIHCSME_AVAILABLE:
         raise ImportError(
-            "The mihcsme_omero package is not installed on this OMERO server. "
-            "Please install it using: pip install mihcsme-omero"
+            "The mihcsme_py package is not installed on this OMERO server. "
+            "Please install it using: pip install mihcsme-py"
         )
 
     target_type = script_params[P_DTYPE]
@@ -169,9 +170,9 @@ def main_loop(conn, script_params):
                 print(f"\n✗ {target_type} {target_id} not found, skipping")
                 continue
 
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Processing {target_type} {target_id}: {target_obj.getName()}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             # Get OMERO plate names and check against metadata
             omero_plates = set()
@@ -191,9 +192,13 @@ def main_loop(conn, script_params):
                 if missing_in_omero or missing_in_metadata:
                     error_msg = "ERROR: Plate name mismatch detected!\n"
                     if missing_in_omero:
-                        error_msg += f"  - Plates in Excel but NOT in OMERO: {sorted(missing_in_omero)}\n"
+                        error_msg += (
+                            f"  - Plates in Excel but NOT in OMERO: {sorted(missing_in_omero)}\n"
+                        )
                     if missing_in_metadata:
-                        error_msg += f"  - Plates in OMERO but NOT in Excel: {sorted(missing_in_metadata)}\n"
+                        error_msg += (
+                            f"  - Plates in OMERO but NOT in Excel: {sorted(missing_in_metadata)}\n"
+                        )
                     error_msg += "\nPlease ensure plate names in the Excel file match OMERO plate names exactly."
                     print(error_msg)
                     raise ValueError(error_msg)
@@ -205,7 +210,7 @@ def main_loop(conn, script_params):
                 target_type=target_type,
                 target_id=target_id,
                 namespace=namespace,
-                replace=replace
+                replace=replace,
             )
 
             results.append(result)
@@ -215,15 +220,15 @@ def main_loop(conn, script_params):
             print(f"  - Status: {result['status']}")
             print(f"  - Wells processed: {result.get('wells_processed', 0)}")
             print(f"  - Wells succeeded: {result.get('wells_succeeded', 0)}")
-            if result.get('wells_failed', 0) > 0:
+            if result.get("wells_failed", 0) > 0:
                 print(f"  - Wells failed: {result['wells_failed']}")
-            if result.get('removed_annotations', 0) > 0:
+            if result.get("removed_annotations", 0) > 0:
                 print(f"  - Removed annotations: {result['removed_annotations']}")
 
         # Create summary message
-        total_processed = sum(r.get('wells_processed', 0) for r in results)
-        successful_wells = sum(r.get('wells_succeeded', 0) for r in results)
-        failed_wells = sum(r.get('wells_failed', 0) for r in results)
+        total_processed = sum(r.get("wells_processed", 0) for r in results)
+        successful_wells = sum(r.get("wells_succeeded", 0) for r in results)
+        failed_wells = sum(r.get("wells_failed", 0) for r in results)
 
         message = (
             f"MIHCSME metadata upload completed.\n"
@@ -254,7 +259,7 @@ def run_script():
     data_types = [rstring("Screen"), rstring("Plate")]
 
     client = scripts.client(
-        'Upload MIHCSME Metadata',
+        "Upload MIHCSME Metadata",
         """
     Uploads MIHCSME metadata from an Excel file to OMERO Screens or Plates.
 
@@ -262,7 +267,7 @@ def run_script():
     pair annotations on the selected Screen/Plate and associated Wells.
 
     Requirements:
-    - The mihcsme_omero package must be installed on the OMERO server
+    - The mihcsme_py package must be installed on the OMERO server
     - Upload the MIHCSME Excel file to OMERO first as a FileAnnotation
     - Provide the FileAnnotation ID to this script
     - Select the target Screen or Plate to annotate
@@ -274,32 +279,40 @@ def run_script():
 
     Default namespace: MIHCSME
         """,
-
         scripts.String(
-            P_DTYPE, optional=False, grouping="1",
+            P_DTYPE,
+            optional=False,
+            grouping="1",
             description="Type of object to annotate (Screen or Plate)",
-            values=data_types, default="Plate"),
-
-        scripts.List(
-            P_IDS, optional=False, grouping="1.1",
-            description="IDs of Screen(s) or Plate(s) to annotate"
-        ).ofType(rlong(0)),
-
-        scripts.Long(
-            P_FILE_ANN_ID, optional=False, grouping="2",
-            description="FileAnnotation ID of the MIHCSME Excel file"
+            values=data_types,
+            default="Plate",
         ),
-
+        scripts.List(
+            P_IDS,
+            optional=False,
+            grouping="1.1",
+            description="IDs of Screen(s) or Plate(s) to annotate",
+        ).ofType(rlong(0)),
+        scripts.Long(
+            P_FILE_ANN_ID,
+            optional=False,
+            grouping="2",
+            description="FileAnnotation ID of the MIHCSME Excel file",
+        ),
         scripts.String(
-            P_NAMESPACE, optional=True, grouping="3",
+            P_NAMESPACE,
+            optional=True,
+            grouping="3",
             description="Namespace for the annotations",
-            default=DEFAULT_NAMESPACE),
-
+            default=DEFAULT_NAMESPACE,
+        ),
         scripts.Bool(
-            P_REPLACE, optional=True, grouping="3.1",
+            P_REPLACE,
+            optional=True,
+            grouping="3.1",
             description="Replace existing annotations in this namespace",
-            default=False),
-
+            default=False,
+        ),
         authors=["Maarten Paul"],
         institutions=["Your Institution"],
         contact="https://forum.image.sc/tag/omero",
@@ -322,7 +335,7 @@ def run_script():
         print("Input parameters:")
         for k, v in params.items():
             print(f"  - {k}: {v}")
-        print("\n" + "="*60 + "\n")
+        print("\n" + "=" * 60 + "\n")
 
         # Connect to OMERO
         conn = BlitzGateway(client_obj=client)

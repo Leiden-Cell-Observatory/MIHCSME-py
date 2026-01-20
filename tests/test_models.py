@@ -5,6 +5,8 @@ import pytest
 from mihcsme_py.models import (
     AssayCondition,
     AssayInformation,
+    DataOwner,
+    InvestigationInfo,
     InvestigationInformation,
     MIHCSMEMetadata,
     StudyInformation,
@@ -14,15 +16,16 @@ from mihcsme_py.models import (
 def test_investigation_information_creation():
     """Test creating InvestigationInformation model."""
     inv_info = InvestigationInformation(
-        groups={
-            "Investigation": {
-                "Investigation Identifier": "INV-001",
-                "Investigation Title": "Test Investigation",
-            }
-        }
+        data_owner=DataOwner(first_name="Jane", last_name="Doe"),
+        investigation_info=InvestigationInfo(
+            project_id="INV-001",
+            investigation_title="Test Investigation",
+        ),
     )
-    assert "Investigation" in inv_info.groups
-    assert inv_info.groups["Investigation"]["Investigation Identifier"] == "INV-001"
+    assert "DataOwner" in inv_info.groups
+    assert inv_info.groups["DataOwner"]["First Name"] == "Jane"
+    assert "InvestigationInformation" in inv_info.groups
+    assert inv_info.groups["InvestigationInformation"]["Project ID"] == "INV-001"
 
 
 def test_assay_condition_well_normalization():
@@ -54,7 +57,7 @@ def test_assay_condition_well_normalization():
 
 def test_assay_condition_well_validation():
     """Test that invalid well names raise errors."""
-    # Invalid row letter
+    # Invalid row letter (Z is beyond P)
     with pytest.raises(ValueError, match="Invalid row letter"):
         AssayCondition(
             plate="Plate1",
@@ -62,8 +65,8 @@ def test_assay_condition_well_validation():
             conditions={},
         )
 
-    # Invalid column number
-    with pytest.raises(ValueError, match="Invalid column number"):
+    # Invalid column number (50 > 48)
+    with pytest.raises(ValueError, match="Invalid well format"):
         AssayCondition(
             plate="Plate1",
             well="A50",
@@ -83,7 +86,7 @@ def test_mihcsme_metadata_to_omero_dict():
     """Test conversion from Pydantic model to OMERO dict format."""
     metadata = MIHCSMEMetadata(
         investigation_information=InvestigationInformation(
-            groups={"Investigation": {"ID": "INV-001"}}
+            investigation_info=InvestigationInfo(project_id="INV-001")
         ),
         assay_conditions=[
             AssayCondition(
@@ -97,7 +100,10 @@ def test_mihcsme_metadata_to_omero_dict():
     omero_dict = metadata.to_omero_dict()
 
     assert "InvestigationInformation" in omero_dict
-    assert omero_dict["InvestigationInformation"]["Investigation"]["ID"] == "INV-001"
+    assert (
+        omero_dict["InvestigationInformation"]["InvestigationInformation"]["Project ID"]
+        == "INV-001"
+    )
     assert "AssayConditions" in omero_dict
     assert len(omero_dict["AssayConditions"]) == 1
     assert omero_dict["AssayConditions"][0]["Plate"] == "Plate1"
@@ -108,9 +114,12 @@ def test_mihcsme_metadata_to_omero_dict():
 def test_mihcsme_metadata_from_omero_dict():
     """Test conversion from OMERO dict format to Pydantic model."""
     omero_dict = {
-        "InvestigationInformation": {"Investigation": {"ID": "INV-001"}},
-        "StudyInformation": {"Study": {"Title": "Test Study"}},
-        "AssayInformation": {"Assay": {"Type": "Microscopy"}},
+        "InvestigationInformation": {
+            "DataOwner": {"First Name": "Jane", "Last Name": "Doe"},
+            "InvestigationInformation": {"Project ID": "INV-001"},
+        },
+        "StudyInformation": {"Study": {"Study Title": "Test Study"}},
+        "AssayInformation": {"Assay": {"Assay Type": "Microscopy"}},
         "AssayConditions": [
             {"Plate": "Plate1", "Well": "A01", "Compound": "DMSO"},
             {"Plate": "Plate1", "Well": "A02", "Compound": "Drug1"},
@@ -121,7 +130,8 @@ def test_mihcsme_metadata_from_omero_dict():
     metadata = MIHCSMEMetadata.from_omero_dict(omero_dict)
 
     assert metadata.investigation_information is not None
-    assert metadata.investigation_information.groups["Investigation"]["ID"] == "INV-001"
+    assert "DataOwner" in metadata.investigation_information.groups
+    assert metadata.investigation_information.groups["DataOwner"]["First Name"] == "Jane"
     assert metadata.study_information is not None
     assert metadata.assay_information is not None
     assert len(metadata.assay_conditions) == 2
@@ -136,10 +146,9 @@ def test_round_trip_conversion():
     """Test that converting to dict and back preserves data."""
     original = MIHCSMEMetadata(
         investigation_information=InvestigationInformation(
-            groups={"Investigation": {"ID": "INV-001", "Title": "Test"}}
+            data_owner=DataOwner(first_name="Jane", last_name="Doe"),
+            investigation_info=InvestigationInfo(project_id="INV-001"),
         ),
-        study_information=StudyInformation(groups={"Study": {"ID": "STD-001"}}),
-        assay_information=AssayInformation(groups={"Assay": {"Type": "HCS"}}),
         assay_conditions=[
             AssayCondition(plate="P1", well="A1", conditions={"Drug": "Aspirin"}),
             AssayCondition(plate="P1", well="B2", conditions={"Drug": "Control"}),
@@ -153,10 +162,9 @@ def test_round_trip_conversion():
     restored = MIHCSMEMetadata.from_omero_dict(omero_dict)
 
     # Verify all data is preserved
-    assert (
-        restored.investigation_information.groups["Investigation"]["ID"]
-        == original.investigation_information.groups["Investigation"]["ID"]
-    )
+    assert restored.investigation_information is not None
+    assert restored.investigation_information.data_owner is not None
+    assert restored.investigation_information.data_owner.first_name == "Jane"
     assert len(restored.assay_conditions) == len(original.assay_conditions)
     assert restored.assay_conditions[0].well == "A01"  # Note: normalized from "A1"
 
@@ -302,14 +310,8 @@ def test_dataframe_round_trip():
     assert len(restored.assay_conditions) == len(original.assay_conditions)
     assert restored.assay_conditions[0].plate == original.assay_conditions[0].plate
     assert restored.assay_conditions[0].well == original.assay_conditions[0].well
-    assert (
-        restored.assay_conditions[0].conditions
-        == original.assay_conditions[0].conditions
-    )
-    assert (
-        restored.assay_conditions[1].conditions
-        == original.assay_conditions[1].conditions
-    )
+    assert restored.assay_conditions[0].conditions == original.assay_conditions[0].conditions
+    assert restored.assay_conditions[1].conditions == original.assay_conditions[1].conditions
 
 
 def test_update_conditions_from_dataframe():
