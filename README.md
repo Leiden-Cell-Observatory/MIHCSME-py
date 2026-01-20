@@ -173,8 +173,7 @@ mihcsme-omero/
 ├── tests/                       # Test suite
 ├── original_scripts/            # Legacy scripts (reference only)
 ├── pyproject.toml               # Package configuration
-├── README.md                    # This file
-└── CLAUDE.md                    # Developer documentation
+└── README.md                    # This file
 ```
 
 ## Contributing
