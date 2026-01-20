@@ -33,7 +33,7 @@ uv pip install -e ".[dev]"
 ### User Installation (After PyPI Release)
 
 ```bash
-uv pip install mihcsme-omero
+uv pip install mihcsme-py
 ```
 
 ## Quick Start
