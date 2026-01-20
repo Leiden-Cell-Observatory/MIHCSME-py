@@ -1,4 +1,4 @@
-# MIHCSME OMERO
+# MiHCSMe-py
 
 A Python package for handling MIHCSME (Minimum Information about a High Content Screening Microscopy Experiment) metadata from Excel spreadsheets to OMERO annotations and back.
 
