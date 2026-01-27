@@ -10,6 +10,7 @@ def _(
     load_tab_content,
     metadata_tab_content,
     mo,
+    omero_tab_content,
     status_bar,
     wells_tab_content,
 ):
@@ -20,6 +21,7 @@ def _(
             "2. Edit Wells": wells_tab_content,
             "3. Edit Metadata": metadata_tab_content,
             "4. Export": export_tab_content,
+            "5. OMERO": omero_tab_content,
         }
     )
 
@@ -27,9 +29,9 @@ def _(
     mo.vstack(
         [
             mo.md("""
-        # MIHCSME Metadata Editor
+        # MIHCSME Metadata Editor + OMERO
 
-        *Create and edit metadata templates for high-content screening microscopy experiments*
+        *Create, edit, and sync metadata templates for high-content screening microscopy experiments with OMERO*
         """),
             status_bar,
             mo.md("---"),
@@ -41,11 +43,45 @@ def _(
 
 
 @app.cell
+def _(ENABLE_LLM_FEATURES, mo):
+    # LLM UI Components - only create if LLM features are enabled
+    if ENABLE_LLM_FEATURES:
+        llm_model_select = mo.ui.dropdown(
+            options=["openrouter/openai/gpt-4o","openrouter/mistralai/mistral-large-2512"],
+            value="openrouter/mistralai/mistral-large-2512",
+            label="LLM Model:",
+        )
+
+        llm_input_text = mo.ui.text_area(
+            placeholder="Paste your lab notes, experimental description, or metadata information here...\n\nExample:\nWe performed a high-content screening experiment using HeLa cells treated with DMSO or 10µM compound X. Images were acquired on the Opera Phenix with 40x objective, 4 channels: DAPI (nuclei), GFP (LC3), CY5 (mitochondria), CY3 (actin). 96-well plates from Corning were used.",
+            label="Input text (lab notes, descriptions):",
+            rows=10,
+            full_width=True,
+        )
+
+        llm_run_button = mo.ui.run_button(label="Generate Metadata with LLM")
+    else:
+        llm_model_select = None
+        llm_input_text = None
+        llm_run_button = None
+    return llm_input_text, llm_model_select, llm_run_button
+
+
+@app.cell
 def _():
     # Configuration flag to enable/disable LLM features
     # Set to False to hide all LLM-related UI elements
-    ENABLE_LLM_FEATURES = False
+    ENABLE_LLM_FEATURES = True
     return (ENABLE_LLM_FEATURES,)
+
+
+@app.cell
+def _():
+    #import llm
+    #for model in llm.get_models():
+    #    if (model.supports_schema & model.supports_tools): 
+    #        print(model)
+    return
 
 
 @app.cell
@@ -57,9 +93,12 @@ def _(ENABLE_LLM_FEATURES):
     import pandas as pd
 
     from mihcsme_py import (
+        download_metadata_from_omero,
         parse_excel_to_model,
+        upload_metadata_to_omero,
         write_metadata_to_excel,
     )
+    from mihcsme_py.omero_connection import connect as omero_connect
 
     # Only import LLM class if LLM features are enabled
     if ENABLE_LLM_FEATURES:
@@ -68,27 +107,27 @@ def _(ENABLE_LLM_FEATURES):
         MIHCSMEMetadataLLM = None
 
     from mihcsme_py.models import (
-        # Investigation
-        DataOwner,
-        DataCollaborator,
-        InvestigationInfo,
-        InvestigationInformation,
-        # Study
-        Study,
-        Biosample,
-        Library,
-        Protocols,
-        Plate,
-        StudyInformation,
         # Assay
         Assay,
         AssayComponent,
-        BiosampleAssay,
-        ImageData,
-        ImageAcquisition,
-        Specimen,
-        Channel,
         AssayInformation,
+        Biosample,
+        BiosampleAssay,
+        Channel,
+        DataCollaborator,
+        # Investigation
+        DataOwner,
+        ImageAcquisition,
+        ImageData,
+        InvestigationInfo,
+        InvestigationInformation,
+        Library,
+        Plate,
+        Protocols,
+        Specimen,
+        # Study
+        Study,
+        StudyInformation,
     )
     return (
         Assay,
@@ -111,9 +150,13 @@ def _(ENABLE_LLM_FEATURES):
         Specimen,
         Study,
         StudyInformation,
+        download_metadata_from_omero,
+        io,
         mo,
+        omero_connect,
         parse_excel_to_model,
         pd,
+        upload_metadata_to_omero,
         write_metadata_to_excel,
     )
 
@@ -264,31 +307,6 @@ def _(file_source, mo):
 
 
 @app.cell
-def _(ENABLE_LLM_FEATURES, mo):
-    # LLM UI Components - only create if LLM features are enabled
-    if ENABLE_LLM_FEATURES:
-        llm_model_select = mo.ui.dropdown(
-            options=["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-20250514", "ollama/llama3"],
-            value="gpt-4o",
-            label="LLM Model:",
-        )
-
-        llm_input_text = mo.ui.text_area(
-            placeholder="Paste your lab notes, experimental description, or metadata information here...\n\nExample:\nWe performed a high-content screening experiment using HeLa cells treated with DMSO or 10µM compound X. Images were acquired on the Opera Phenix with 40x objective, 4 channels: DAPI (nuclei), GFP (LC3), CY5 (mitochondria), CY3 (actin). 96-well plates from Corning were used.",
-            label="Input text (lab notes, descriptions):",
-            rows=10,
-            full_width=True,
-        )
-
-        llm_run_button = mo.ui.run_button(label="Generate Metadata with LLM")
-    else:
-        llm_model_select = None
-        llm_input_text = None
-        llm_run_button = None
-    return llm_input_text, llm_model_select, llm_run_button
-
-
-@app.cell
 def _(ENABLE_LLM_FEATURES, metadata_from_file, mo):
     # LLM Mode selection - only create if LLM features are enabled
     if not ENABLE_LLM_FEATURES:
@@ -358,6 +376,20 @@ def _(mo):
     # Using mo.state to preserve the value when user switches between modes
     get_persisted_metadata, set_persisted_metadata = mo.state(None)
     return get_persisted_metadata, set_persisted_metadata
+
+
+@app.cell
+def _(mo):
+    # State to persist OMERO connection across cell re-runs
+    get_omero_conn, set_omero_conn = mo.state(None)
+    # State to store OMERO-downloaded metadata
+    get_omero_metadata, set_omero_metadata = mo.state(None)
+    return (
+        get_omero_conn,
+        get_omero_metadata,
+        set_omero_conn,
+        set_omero_metadata,
+    )
 
 
 @app.cell
@@ -440,6 +472,7 @@ def _(
         import json
 
         import llm as llm_lib
+        import llm_openrouter
         try:
             _model = llm_lib.get_model(llm_model_select.value)
 
@@ -484,9 +517,13 @@ def _(
                 if llm_metadata.investigation_information:
                     _inv = llm_metadata.investigation_information
                     if _inv.investigation_info and _inv.investigation_info.investigation_title:
-                        _summary_parts.append(f"Investigation: {_inv.investigation_info.investigation_title}")
+                        _summary_parts.append(
+                            f"Investigation: {_inv.investigation_info.investigation_title}"
+                        )
                     if _inv.data_owner and _inv.data_owner.first_name:
-                        _summary_parts.append(f"Data owner: {_inv.data_owner.first_name} {_inv.data_owner.last_name or ''}")
+                        _summary_parts.append(
+                            f"Data owner: {_inv.data_owner.first_name} {_inv.data_owner.last_name or ''}"
+                        )
                 if llm_metadata.study_information:
                     _study = llm_metadata.study_information
                     if _study.biosample and _study.biosample.biosample_organism:
@@ -495,7 +532,9 @@ def _(
                     _assay = llm_metadata.assay_information
                     if _assay.specimen and _assay.specimen.channels:
                         _summary_parts.append(f"Channels: {len(_assay.specimen.channels)}")
-                llm_summary = "; ".join(_summary_parts) if _summary_parts else "Metadata structure created"
+                llm_summary = (
+                    "; ".join(_summary_parts) if _summary_parts else "Metadata structure created"
+                )
             else:
                 # Merge with existing (preserving assay_conditions and reference_sheets)
                 llm_metadata = metadata_from_file.model_copy(deep=True)
@@ -513,20 +552,28 @@ def _(
                     llm_metadata.assay_information = _llm_result.assay_information
                     _updated_sections.append("Assay")
 
-                llm_summary = f"Updated sections: {', '.join(_updated_sections)}" if _updated_sections else "No changes detected"
+                llm_summary = (
+                    f"Updated sections: {', '.join(_updated_sections)}"
+                    if _updated_sections
+                    else "No changes detected"
+                )
 
         except Exception as e:
             llm_error = str(e)
-            mo.output.append(
-                mo.callout(mo.md(f"**LLM Error:** {llm_error}"), kind="danger")
-            )
+            mo.output.append(mo.callout(mo.md(f"**LLM Error:** {llm_error}"), kind="danger"))
     return llm_error, llm_metadata, llm_summary, llm_was_update
 
 
 @app.cell
-def _(file_source, llm_metadata, metadata_from_file):
-    # Combine metadata sources: use LLM metadata if available and in LLM mode, otherwise file metadata
-    if file_source.value == "Generate with LLM" and llm_metadata is not None:
+def _(file_source, get_omero_metadata, llm_metadata, metadata_from_file):
+    # Combine metadata sources with priority:
+    # 1. OMERO-downloaded metadata (highest priority when available)
+    # 2. LLM-generated metadata (when in LLM mode)
+    # 3. File-loaded metadata (default)
+    _omero_meta = get_omero_metadata()
+    if _omero_meta is not None:
+        metadata = _omero_meta
+    elif file_source.value == "Generate with LLM" and llm_metadata is not None:
         metadata = llm_metadata
     else:
         metadata = metadata_from_file
@@ -569,14 +616,14 @@ def _(
             # Include summary if available
             _summary_text = f"\n\n*{llm_summary}*" if llm_summary else ""
             _load_status = mo.callout(
-                mo.md(
-                    f"**{_action}** ({_num_conditions} well conditions){_summary_text}"
-                ),
+                mo.md(f"**{_action}** ({_num_conditions} well conditions){_summary_text}"),
                 kind="success",
             )
         else:
             _load_status = mo.callout(
-                mo.md("**Ready.** Enter your lab notes above and click 'Generate Metadata with LLM'."),
+                mo.md(
+                    "**Ready.** Enter your lab notes above and click 'Generate Metadata with LLM'."
+                ),
                 kind="info",
             )
     elif load_error is not None:
@@ -1658,9 +1705,475 @@ def _(
     return (export_tab_content,)
 
 
+@app.cell
+def _(mo):
+    # OMERO Connection UI Components
+    omero_host = mo.ui.text(
+        value="omero.example.com",
+        label="OMERO Host:",
+        full_width=True,
+    )
+    omero_user = mo.ui.text(
+        value="",
+        label="Username:",
+        full_width=True,
+    )
+    omero_password = mo.ui.text(
+        value="",
+        label="Password:",
+        kind="password",
+        full_width=True,
+    )
+    omero_port = mo.ui.number(
+        value=4064,
+        label="Port:",
+        start=1,
+        stop=65535,
+    )
+    omero_group = mo.ui.text(
+        value="",
+        label="Group (optional):",
+        full_width=True,
+        placeholder="Leave empty for default group",
+    )
+    omero_secure = mo.ui.checkbox(
+        value=True,
+        label="Use secure connection (SSL)",
+    )
+    omero_connect_button = mo.ui.run_button(label="Connect to OMERO")
+    omero_disconnect_button = mo.ui.run_button(label="Disconnect")
+    return (
+        omero_connect_button,
+        omero_disconnect_button,
+        omero_group,
+        omero_host,
+        omero_password,
+        omero_port,
+        omero_secure,
+        omero_user,
+    )
+
+
+@app.cell
+def _(
+    get_omero_conn,
+    mo,
+    omero_connect,
+    omero_connect_button,
+    omero_disconnect_button,
+    omero_group,
+    omero_host,
+    omero_password,
+    omero_port,
+    omero_secure,
+    omero_user,
+    set_omero_conn,
+):
+    # OMERO Connection Handler
+    omero_conn_error = None
+    omero_conn_status = None
+
+    # Handle disconnect
+    if omero_disconnect_button.value:
+        _conn = get_omero_conn()
+        if _conn is not None:
+            try:
+                _conn.close()
+            except Exception:
+                pass
+            set_omero_conn(None)
+            omero_conn_status = "Disconnected"
+
+    # Handle connect
+    if omero_connect_button.value:
+        if not omero_host.value or not omero_user.value or not omero_password.value:
+            omero_conn_error = "Please fill in host, username, and password"
+        else:
+            try:
+                _new_conn = omero_connect(
+                    host=omero_host.value,
+                    user=omero_user.value,
+                    password=omero_password.value,
+                    port=int(omero_port.value),
+                    group=omero_group.value if omero_group.value else None,
+                    secure=omero_secure.value,
+                )
+                set_omero_conn(_new_conn)
+                omero_conn_status = f"Connected to {omero_host.value} as {omero_user.value}"
+            except Exception as e:
+                omero_conn_error = str(e)
+                set_omero_conn(None)
+
+    # Get current connection status
+    _current_conn = get_omero_conn()
+    if _current_conn is not None and omero_conn_status is None:
+        # Connection exists from previous state
+        try:
+            # Check if connection is still alive
+            if _current_conn.isConnected():
+                omero_conn_status = f"Connected to {omero_host.value}"
+            else:
+                omero_conn_status = "Connection lost"
+                set_omero_conn(None)
+        except Exception:
+            omero_conn_status = "Connection state unknown"
+
+    # Build connection status display
+    if omero_conn_error:
+        omero_connection_display = mo.callout(
+            mo.md(f"**Connection Error:** {omero_conn_error}"), kind="danger"
+        )
+    elif omero_conn_status and "Connected to" in omero_conn_status:
+        omero_connection_display = mo.callout(mo.md(f"**{omero_conn_status}**"), kind="success")
+    elif omero_conn_status == "Disconnected":
+        omero_connection_display = mo.callout(mo.md("**Disconnected from OMERO**"), kind="info")
+    else:
+        omero_connection_display = mo.callout(
+            mo.md("**Not connected.** Enter credentials and click Connect."), kind="info"
+        )
+    return (omero_connection_display,)
+
+
+@app.cell
+def _(mo):
+    # OMERO Download UI Components
+    omero_download_target_type = mo.ui.dropdown(
+        options=["Screen", "Plate"],
+        value="Screen",
+        label="Target Type:",
+    )
+    omero_download_target_id = mo.ui.number(
+        value=1,
+        label="Target ID:",
+        start=1,
+    )
+    omero_download_button = mo.ui.run_button(label="Download Metadata from OMERO")
+    return (
+        omero_download_button,
+        omero_download_target_id,
+        omero_download_target_type,
+    )
+
+
+@app.cell
+def _(
+    download_metadata_from_omero,
+    get_omero_conn,
+    mo,
+    omero_download_button,
+    omero_download_target_id,
+    omero_download_target_type,
+    set_omero_metadata,
+):
+    # OMERO Download Handler
+    omero_download_result = None
+    omero_download_error = None
+
+    if omero_download_button.value:
+        _conn = get_omero_conn()
+        if _conn is None:
+            omero_download_error = "Not connected to OMERO. Please connect first."
+        else:
+            try:
+                _downloaded_metadata = download_metadata_from_omero(
+                    conn=_conn,
+                    target_type=omero_download_target_type.value,
+                    target_id=int(omero_download_target_id.value),
+                )
+                set_omero_metadata(_downloaded_metadata)
+                _num_conditions = (
+                    len(_downloaded_metadata.assay_conditions)
+                    if _downloaded_metadata.assay_conditions
+                    else 0
+                )
+                omero_download_result = (
+                    f"Downloaded metadata from {omero_download_target_type.value} "
+                    f"ID {omero_download_target_id.value}: {_num_conditions} well conditions"
+                )
+            except Exception as e:
+                omero_download_error = str(e)
+                set_omero_metadata(None)
+
+    # Build download status display
+    if omero_download_error:
+        omero_download_display = mo.callout(
+            mo.md(f"**Download Error:** {omero_download_error}"), kind="danger"
+        )
+    elif omero_download_result:
+        omero_download_display = mo.callout(
+            mo.md(f"**Success!** {omero_download_result}"), kind="success"
+        )
+    else:
+        omero_download_display = mo.md("")
+    return (omero_download_display,)
+
+
+@app.cell
+def _(mo):
+    # OMERO Upload UI Components
+    omero_upload_target_type = mo.ui.dropdown(
+        options=["Screen", "Plate"],
+        value="Screen",
+        label="Target Type:",
+    )
+    omero_upload_target_id = mo.ui.number(
+        value=1,
+        label="Target ID:",
+        start=1,
+    )
+    omero_upload_replace = mo.ui.checkbox(
+        value=False,
+        label="Replace existing annotations (removes old MIHCSME annotations first)",
+    )
+    omero_upload_button = mo.ui.run_button(label="Upload Metadata to OMERO")
+    return (
+        omero_upload_button,
+        omero_upload_replace,
+        omero_upload_target_id,
+        omero_upload_target_type,
+    )
+
+
+@app.cell
+def _(
+    AssayInformation,
+    InvestigationInformation,
+    StudyInformation,
+    assay_updated_assay,
+    assay_updated_assay_component,
+    assay_updated_biosample_assay,
+    assay_updated_image_acquisition,
+    assay_updated_image_data,
+    assay_updated_specimen,
+    get_omero_conn,
+    inv_updated_collaborators,
+    inv_updated_data_owner,
+    inv_updated_investigation_info,
+    metadata_updated,
+    mo,
+    omero_upload_button,
+    omero_upload_replace,
+    omero_upload_target_id,
+    omero_upload_target_type,
+    study_updated_biosample,
+    study_updated_library,
+    study_updated_plate,
+    study_updated_protocols,
+    study_updated_study,
+    upload_metadata_to_omero,
+):
+    # OMERO Upload Handler
+    omero_upload_result = None
+    omero_upload_error = None
+
+    if omero_upload_button.value:
+        _conn = get_omero_conn()
+        if _conn is None:
+            omero_upload_error = "Not connected to OMERO. Please connect first."
+        elif metadata_updated is None:
+            omero_upload_error = "No metadata to upload. Please load a template first."
+        else:
+            try:
+                # Build final metadata with any form updates
+                _final_metadata = metadata_updated.model_copy(deep=True)
+
+                try:
+                    # Update Investigation Information
+                    if (
+                        inv_updated_data_owner is not None
+                        and inv_updated_investigation_info is not None
+                    ):
+                        _updated_investigation_information = InvestigationInformation(
+                            data_owner=inv_updated_data_owner,
+                            investigation_info=inv_updated_investigation_info,
+                            data_collaborators=inv_updated_collaborators,
+                        )
+                        _final_metadata.investigation_information = (
+                            _updated_investigation_information
+                        )
+
+                    # Update Study Information
+                    if study_updated_study is not None:
+                        _updated_study_information = StudyInformation(
+                            study=study_updated_study,
+                            biosample=study_updated_biosample,
+                            library=study_updated_library,
+                            protocols=study_updated_protocols,
+                            plate=study_updated_plate,
+                        )
+                        _final_metadata.study_information = _updated_study_information
+
+                    # Update Assay Information
+                    if assay_updated_assay is not None:
+                        _updated_assay_information = AssayInformation(
+                            assay=assay_updated_assay,
+                            assay_component=assay_updated_assay_component,
+                            biosample=assay_updated_biosample_assay,
+                            image_data=assay_updated_image_data,
+                            image_acquisition=assay_updated_image_acquisition,
+                            specimen=assay_updated_specimen,
+                        )
+                        _final_metadata.assay_information = _updated_assay_information
+                except NameError:
+                    pass
+
+                # Upload to OMERO
+                _result = upload_metadata_to_omero(
+                    conn=_conn,
+                    metadata=_final_metadata,
+                    target_type=omero_upload_target_type.value,
+                    target_id=int(omero_upload_target_id.value),
+                    replace=omero_upload_replace.value,
+                )
+
+                if _result["status"] == "success":
+                    omero_upload_result = (
+                        f"Upload successful! "
+                        f"Wells: {_result['wells_succeeded']}/{_result['wells_processed']} succeeded"
+                    )
+                    if omero_upload_replace.value:
+                        omero_upload_result += (
+                            f", Removed {_result['removed_annotations']} old annotations"
+                        )
+                elif _result["status"] == "partial_success":
+                    omero_upload_result = (
+                        f"Partial success. {_result['message']} "
+                        f"Wells: {_result['wells_succeeded']}/{_result['wells_processed']}"
+                    )
+                else:
+                    omero_upload_error = _result["message"]
+
+            except Exception as e:
+                omero_upload_error = str(e)
+
+    # Build upload status display
+    if omero_upload_error:
+        omero_upload_display = mo.callout(
+            mo.md(f"**Upload Error:** {omero_upload_error}"), kind="danger"
+        )
+    elif omero_upload_result:
+        if "Partial" in omero_upload_result:
+            omero_upload_display = mo.callout(mo.md(f"**{omero_upload_result}**"), kind="warn")
+        else:
+            omero_upload_display = mo.callout(mo.md(f"**{omero_upload_result}**"), kind="success")
+    else:
+        omero_upload_display = mo.md("")
+    return (omero_upload_display,)
+
+
 @app.cell(hide_code=True)
-def _(metadata, mo):
+def _(
+    get_omero_conn,
+    mo,
+    omero_connect_button,
+    omero_connection_display,
+    omero_disconnect_button,
+    omero_download_button,
+    omero_download_display,
+    omero_download_target_id,
+    omero_download_target_type,
+    omero_group,
+    omero_host,
+    omero_password,
+    omero_port,
+    omero_secure,
+    omero_upload_button,
+    omero_upload_display,
+    omero_upload_replace,
+    omero_upload_target_id,
+    omero_upload_target_type,
+    omero_user,
+):
+    # Build OMERO Tab Content
+    _conn = get_omero_conn()
+    _is_connected = _conn is not None
+
+    # Connection section
+    _connection_form = mo.vstack(
+        [
+            mo.md("**Server Settings**"),
+            omero_host,
+            mo.hstack([omero_port, omero_secure], gap=2),
+            mo.md("**Credentials**"),
+            omero_user,
+            omero_password,
+            omero_group,
+            mo.hstack([omero_connect_button, omero_disconnect_button], gap=2),
+            omero_connection_display,
+        ],
+        gap=1,
+    )
+
+    # Download section
+    _download_section = mo.vstack(
+        [
+            mo.md("""
+            **Download metadata from OMERO**
+
+            Load existing MIHCSME metadata from a Screen or Plate in OMERO.
+            The downloaded metadata will be available for editing in the other tabs.
+            """),
+            mo.hstack([omero_download_target_type, omero_download_target_id], gap=2),
+            omero_download_button,
+            omero_download_display,
+        ],
+        gap=2,
+    )
+
+    # Upload section
+    _upload_section = mo.vstack(
+        [
+            mo.md("""
+            **Upload metadata to OMERO**
+
+            Push your current metadata to a Screen or Plate in OMERO.
+            This will create MapAnnotations on the target object and its wells.
+            """),
+            mo.hstack([omero_upload_target_type, omero_upload_target_id], gap=2),
+            omero_upload_replace,
+            omero_upload_button,
+            omero_upload_display,
+        ],
+        gap=2,
+    )
+
+    # Build the OMERO sub-tabs
+    _omero_subtabs = mo.ui.tabs(
+        {
+            "Download": _download_section,
+            "Upload": _upload_section,
+        }
+    )
+
+    # Assemble OMERO tab content
+    omero_tab_content = mo.vstack(
+        [
+            mo.md("""
+            ### OMERO Integration
+
+            Connect to an OMERO server to download or upload MIHCSME metadata.
+            """),
+            mo.md("---"),
+            _connection_form,
+            mo.md("---"),
+            _omero_subtabs
+            if _is_connected
+            else mo.callout(
+                mo.md("**Connect to OMERO** to access download and upload features."),
+                kind="info",
+            ),
+        ],
+        gap=2,
+    )
+    return (omero_tab_content,)
+
+
+@app.cell(hide_code=True)
+def _(get_omero_conn, metadata, mo):
     # Build status bar content
+    _conn = get_omero_conn()
+    _omero_status = "Connected" if _conn is not None else "Not connected"
+
     if metadata is not None:
         _df = metadata.to_dataframe()
         _num_plates = len(_df["Plate"].unique()) if len(_df) > 0 else 0
@@ -1671,6 +2184,7 @@ def _(metadata, mo):
                 mo.stat(value="Loaded", label="Template", bordered=True),
                 mo.stat(value=str(_num_plates), label="Plates", bordered=True),
                 mo.stat(value=str(_num_wells), label="Wells", bordered=True),
+                mo.stat(value=_omero_status, label="OMERO", bordered=True),
             ],
             justify="start",
             gap=2,
@@ -1679,8 +2193,10 @@ def _(metadata, mo):
         status_bar = mo.hstack(
             [
                 mo.stat(value="Not loaded", label="Template", bordered=True),
+                mo.stat(value=_omero_status, label="OMERO", bordered=True),
             ],
             justify="start",
+            gap=2,
         )
     return (status_bar,)
 

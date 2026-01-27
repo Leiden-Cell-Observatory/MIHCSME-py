@@ -1,7 +1,7 @@
 """Write MIHCSME metadata to Excel format."""
 
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Union, BinaryIO
 
 import pandas as pd
 from openpyxl import Workbook
@@ -11,12 +11,14 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from mihcsme_py.models import MIHCSMEMetadata
 
 
-def write_metadata_to_excel(metadata: MIHCSMEMetadata, output_path: Path) -> None:
+def write_metadata_to_excel(
+    metadata: MIHCSMEMetadata, output_path: Union[Path, BinaryIO]
+) -> None:
     """
     Write MIHCSME metadata to Excel file.
 
     :param metadata: MIHCSMEMetadata object to export
-    :param output_path: Path to output Excel file
+    :param output_path: Path to output Excel file, or a file-like object (e.g., BytesIO)
     """
     wb = Workbook()
     # Remove default sheet
