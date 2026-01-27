@@ -33,7 +33,7 @@ uv pip install -e ".[dev]"
 ### User Installation (After PyPI Release)
 
 ```bash
-uv pip install mihcsme-omero
+uv pip install mihcsme-py
 ```
 
 ## Quick Start
@@ -173,14 +173,8 @@ mihcsme-omero/
 ├── tests/                       # Test suite
 ├── original_scripts/            # Legacy scripts (reference only)
 ├── pyproject.toml               # Package configuration
-├── README.md                    # This file
-└── CLAUDE.md                    # Developer documentation
+└── README.md                    # This file
 ```
-
-## Documentation
-
-- [CLAUDE.md](CLAUDE.md) - Comprehensive developer documentation
-- [LEI-MIHCSME.xlsx](LEI-MIHCSME.xlsx) - Example MIHCSME Excel file
 
 ## Contributing
 
@@ -195,20 +189,4 @@ Contributions are welcome! Please:
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) file for details.
-
-## Technology Stack
-
-- **omero-py** - Direct OMERO server integration
-- **Pydantic** - Data validation and models
-- **Pandas** - Excel file parsing
-- **Typer** - Modern CLI framework
-- **Rich** - Beautiful terminal output
-
-## References
-
-- [OMERO Documentation](https://docs.openmicroscopy.org/omero/)
-- [OMERO Python Language Bindings](https://github.com/ome/omero-py)
-- [Pydantic Documentation](https://docs.pydantic.dev/)
-- [Typer Documentation](https://typer.tiangolo.com/)
-- [MIHCSME Specification](https://www.ebi.ac.uk/biosamples/docs/references/sampletab)
+See [LICENSE](LICENSE) file for details.
