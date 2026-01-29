@@ -40,7 +40,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --locked --extra docs --no-install-package zeroc-ice
+          uv pip install -e ".[docs]" --no-build-package zeroc-ice
 
       - name: Configure Git
         run: |

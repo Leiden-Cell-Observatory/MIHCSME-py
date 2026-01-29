@@ -55,7 +55,7 @@ jobs:
         uv pip install "https://github.com/glencoesoftware/zeroc-ice-py-win-x86_64/releases/download/20240325/zeroc_ice-3.6.5-${{ steps.python-version.outputs.cp_version }}-${{ steps.python-version.outputs.cp_version }}-win_amd64.whl"
 
     - name: Install dependencies
-      run: uv sync --locked --all-extras --dev --no-install-package zeroc-ice
+      run: uv pip install -e ".[dev]" --no-build-package zeroc-ice
         
     - name: Run unit tests
       run: uv run pytest tests/ -v     
