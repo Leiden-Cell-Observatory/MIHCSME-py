@@ -12,12 +12,16 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Fetch all history for git info plugin
 
@@ -27,13 +31,13 @@ jobs:
           python-version: '3.11'
           enable-cache: true
 
+      - name: Install dependencies
+        run: |
+          uv sync --locked --extra docs
+
       - name: Install zeroc-ice wheel
         run: |
           uv pip install https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-cp311-cp311-manylinux_2_28_x86_64.whl
-
-      - name: Install dependencies
-        run: |
-          uv sync --extra docs
 
       - name: Configure Git
         run: |
