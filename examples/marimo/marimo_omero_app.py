@@ -1,3 +1,17 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "llm==0.28",
+#     "llm-openrouter==0.5",
+#     "marimo>=0.19.6",
+#     "mihcsme-py",
+#     "zeroc-ice",
+# ]
+#
+# [tool.uv.sources]
+# zeroc-ice = { url = "https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-cp312-cp312-manylinux_2_28_x86_64.whl" }
+# mihcsme-py = { git = "https://github.com/Leiden-Cell-Observatory/MIHCSME-py.git", rev = "marimo_app" }
+# ///
 import marimo
 
 __generated_with = "0.19.4"

@@ -560,13 +560,32 @@ def download_metadata_from_omero(
 
     # Helper function to get annotations from an object
     def get_annotations_as_dict(obj, ns_filter: str) -> Dict[str, Dict[str, Any]]:
-        """Get MapAnnotations from an object and organize by namespace."""
+        """Get MapAnnotations from an object and organize by namespace.
+        
+        The namespace structure is expected to be:
+        - MIHCSME/InvestigationInformation/DataOwner
+        - MIHCSME/InvestigationInformation/InvestigationInfo
+        - MIHCSME/StudyInformation/Study
+        - MIHCSME/AssayInformation/Assay
+        etc.
+        
+        Where the format is: namespace_base/sheet_name/group_name
+        """
         result = {}
         for ann in obj.listAnnotations():
             if hasattr(ann, "getNs") and ann.getNs() and ann.getNs().startswith(ns_filter):
-                # Extract the sheet name from namespace (e.g., "MIHCSME/InvestigationInformation")
                 ns = ann.getNs()
-                sheet_name = ns.split("/")[-1] if "/" in ns else ns
+                parts = ns.split("/")
+                
+                # Extract sheet name (second part) and group name (third part if exists)
+                # e.g., "MIHCSME/InvestigationInformation/DataOwner" -> sheet_name="InvestigationInformation", group_name="DataOwner"
+                if len(parts) >= 2:
+                    sheet_name = parts[1]  # InvestigationInformation, StudyInformation, AssayInformation
+                    group_name = parts[2] if len(parts) >= 3 else None  # DataOwner, Study, Assay, etc.
+                else:
+                    # Fallback for legacy format (just "MIHCSME")
+                    sheet_name = parts[-1] if "/" in ns else ns
+                    group_name = None
 
                 # Get key-value pairs from MapAnnotation
                 if hasattr(ann, "getValue"):
@@ -574,21 +593,18 @@ def download_metadata_from_omero(
                     for key, value in ann.getValue():
                         kv_pairs[key] = value
 
-                    # Group by the first part of the key (e.g., "DataOwner", "Study")
                     if kv_pairs:
-                        # If sheet_name not in result, initialize it
+                        # Initialize sheet if not present
                         if sheet_name not in result:
                             result[sheet_name] = {}
 
-                        # For grouped metadata (Investigation, Study, Assay), organize by groups
-                        if sheet_name in [SHEET_INVESTIGATION, SHEET_STUDY, SHEET_ASSAY]:
-                            # Parse the group structure from keys
-                            for k, v in kv_pairs.items():
-                                # Keys are in format "Group.Field" or just "Field"
-                                # For MIHCSME, we need to infer groups from the data
-                                result[sheet_name][k] = v
+                        # If we have a group name, organize under that group
+                        if group_name:
+                            if group_name not in result[sheet_name]:
+                                result[sheet_name][group_name] = {}
+                            result[sheet_name][group_name].update(kv_pairs)
                         else:
-                            # For other sheets, just store the key-value pairs
+                            # No group name, store directly under sheet
                             result[sheet_name].update(kv_pairs)
 
         return result
@@ -596,20 +612,16 @@ def download_metadata_from_omero(
     # 1. Get object-level metadata (Investigation, Study, Assay)
     object_annotations = get_annotations_as_dict(target_obj, namespace)
 
-    # Organize Investigation Information into groups
+    # The annotations are now already organized by sheet and group
+    # e.g., {"InvestigationInformation": {"DataOwner": {...}, "InvestigationInfo": {...}}}
     if SHEET_INVESTIGATION in object_annotations:
-        inv_data = object_annotations[SHEET_INVESTIGATION]
-        metadata_dict["InvestigationInformation"] = _organize_into_groups(inv_data)
+        metadata_dict["InvestigationInformation"] = object_annotations[SHEET_INVESTIGATION]
 
-    # Organize Study Information into groups
     if SHEET_STUDY in object_annotations:
-        study_data = object_annotations[SHEET_STUDY]
-        metadata_dict["StudyInformation"] = _organize_into_groups(study_data)
+        metadata_dict["StudyInformation"] = object_annotations[SHEET_STUDY]
 
-    # Organize Assay Information into groups
     if SHEET_ASSAY in object_annotations:
-        assay_data = object_annotations[SHEET_ASSAY]
-        metadata_dict["AssayInformation"] = _organize_into_groups(assay_data)
+        metadata_dict["AssayInformation"] = object_annotations[SHEET_ASSAY]
 
     # 2. Get well-level metadata (AssayConditions)
     assay_conditions = []
@@ -665,10 +677,10 @@ def _organize_into_groups(flat_dict: Dict[str, Any]) -> Dict[str, Dict[str, Any]
         "Institute": "DataOwner",
         "E-Mail Address": "DataOwner",
         "ORCID investigator": "DataOwner",
-        "Project ID": "InvestigationInformation",
-        "Investigation Title": "InvestigationInformation",
-        "Investigation internal ID": "InvestigationInformation",
-        "Investigation description": "InvestigationInformation",
+        "Project ID": "InvestigationInfo",
+        "Investigation Title": "InvestigationInfo",
+        "Investigation internal ID": "InvestigationInfo",
+        "Investigation description": "InvestigationInfo",
         # Study groups
         "Study Title": "Study",
         "Study internal ID": "Study",
@@ -707,32 +719,42 @@ def _organize_into_groups(flat_dict: Dict[str, Any]) -> Dict[str, Dict[str, Any]
         "Cell lines storage location": "Biosample",
         "Cell lines clone number": "Biosample",
         "Cell lines Passage number": "Biosample",
+        # Image data fields
+        "Image number of pixelsX": "ImageData",
+        "Image number of pixelsY": "ImageData",
+        "Image number of  z-stacks": "ImageData",
+        "Image number of channels": "ImageData",
+        "Image number of timepoints": "ImageData",
+        "Image sites per well": "ImageData",
+        # Image acquisition fields
+        "Microscope id": "ImageAcquisition",
     }
 
     groups = {}
     for key, value in flat_dict.items():
         # Find the group for this key
-        group_name = known_groups.get(key)
+        assigned_group = known_groups.get(key)
 
-        if not group_name:
-            # Try to infer from key prefix (e.g., "Image number of pixelsX" → "ImageData")
+        if not assigned_group:
+            # Try to infer from key prefix for fields not in known_groups
             if key.startswith("Image "):
-                if "Microscope" in key:
-                    group_name = "ImageAcquisition"
+                # Image-related fields: check if microscope-related
+                if "Microscope" in key or "microscope" in key:
+                    assigned_group = "ImageAcquisition"
                 else:
-                    group_name = "ImageData"
+                    assigned_group = "ImageData"
             elif key.startswith("Channel ") or key == "Channel Transmission id":
-                group_name = "Specimen"
+                assigned_group = "Specimen"
             elif "ORCID" in key and "Collaborator" in key:
-                group_name = "DataCollaborator"
+                assigned_group = "DataCollaborator"
             else:
                 # Default: use "Metadata" as fallback group
-                group_name = "Metadata"
+                assigned_group = "Metadata"
 
         # Add to group
-        if group_name not in groups:
-            groups[group_name] = {}
-        groups[group_name][key] = value
+        if assigned_group not in groups:
+            groups[assigned_group] = {}
+        groups[assigned_group][key] = value
 
     return groups
 

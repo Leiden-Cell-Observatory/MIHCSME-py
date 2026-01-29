@@ -193,11 +193,11 @@ class InvestigationInformation(BaseModel):
                     # All use same key name per template
                     groups["DataCollaborator"][f"ORCID  Data Collaborator_{i}"] = collab.orcid
 
-        # InvestigationInformation group - automatically include all fields
+        # InvestigationInfo group - automatically include all fields
         if self.investigation_info:
             data = _model_to_dict_with_aliases(self.investigation_info)
             if data:
-                groups["InvestigationInformation"] = data
+                groups["InvestigationInfo"] = data
 
         return groups
 
@@ -216,10 +216,10 @@ class InvestigationInformation(BaseModel):
                 if "ORCID" in key and value:
                     data_collaborators.append(DataCollaborator(orcid=value))
 
-        # Parse InvestigationInformation
+        # Parse InvestigationInfo (note: group name is "InvestigationInfo", not "InvestigationInformation")
         investigation_info = None
-        if "InvestigationInformation" in groups:
-            investigation_info = InvestigationInfo(**groups["InvestigationInformation"])
+        if "InvestigationInfo" in groups:
+            investigation_info = InvestigationInfo(**groups["InvestigationInfo"])
 
         return cls(
             data_owner=data_owner,
