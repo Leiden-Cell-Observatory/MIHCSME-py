@@ -24,8 +24,8 @@ def test_investigation_information_creation():
     )
     assert "DataOwner" in inv_info.groups
     assert inv_info.groups["DataOwner"]["First Name"] == "Jane"
-    assert "InvestigationInformation" in inv_info.groups
-    assert inv_info.groups["InvestigationInformation"]["Project ID"] == "INV-001"
+    assert "InvestigationInfo" in inv_info.groups
+    assert inv_info.groups["InvestigationInfo"]["Project ID"] == "INV-001"
 
 
 def test_assay_condition_well_normalization():
@@ -101,7 +101,7 @@ def test_mihcsme_metadata_to_omero_dict():
 
     assert "InvestigationInformation" in omero_dict
     assert (
-        omero_dict["InvestigationInformation"]["InvestigationInformation"]["Project ID"]
+        omero_dict["InvestigationInformation"]["InvestigationInfo"]["Project ID"]
         == "INV-001"
     )
     assert "AssayConditions" in omero_dict
