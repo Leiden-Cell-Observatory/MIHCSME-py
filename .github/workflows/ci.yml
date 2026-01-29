@@ -1,0 +1,108 @@
+name: CI/CD
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.10', '3.11', '3.12']
+        
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Install uv and set Python version
+      uses: astral-sh/setup-uv@v7
+      with:
+        python-version: ${{ matrix.python-version }}
+        enable-cache: true
+    
+    - name: Set Python version variable
+      id: python-version
+      run: |
+        if [[ "${{ matrix.python-version }}" == "3.10" ]]; then
+          echo "cp_version=cp310" >> $GITHUB_OUTPUT
+        elif [[ "${{ matrix.python-version }}" == "3.11" ]]; then
+          echo "cp_version=cp311" >> $GITHUB_OUTPUT
+        elif [[ "${{ matrix.python-version }}" == "3.12" ]]; then
+          echo "cp_version=cp312" >> $GITHUB_OUTPUT
+        fi
+      shell: bash
+    
+    - name: Install zeroc-ice (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        uv pip install --system "https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-${{ steps.python-version.outputs.cp_version }}-${{ steps.python-version.outputs.cp_version }}-manylinux_2_28_x86_64.whl"
+    
+    - name: Install zeroc-ice (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        uv pip install --system "https://github.com/glencoesoftware/zeroc-ice-py-win-x86_64/releases/download/20240325/zeroc_ice-3.6.5-${{ steps.python-version.outputs.cp_version }}-${{ steps.python-version.outputs.cp_version }}-win_amd64.whl"
+    
+    - name: Install dependencies
+      run: uv sync --all-extras --dev
+        
+    - name: Run unit tests
+      run: uv run pytest tests/ -v     
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Install uv and set Python version
+      uses: astral-sh/setup-uv@v7
+      with:
+        python-version: '3.11'
+        enable-cache: true
+        
+    - name: Build package
+      run: uv build
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v6
+      with:
+        name: dist
+        path: dist/
+
+  publish:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    environment: pypi
+    permissions:
+      id-token: write  # For trusted publishing
+      contents: read
+      
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Install uv and set Python version
+      uses: astral-sh/setup-uv@v7
+      with:
+        python-version: '3.11'
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v7
+      with:
+        name: dist
+        path: dist/
+    
+    - name: Verify package contents
+      run: |
+        echo "Package contents:"
+        ls -la dist/
+        python -m zipfile -l dist/*.whl || echo "No wheel found"
+        tar -tzf dist/*.tar.gz || echo "No tarball found"
+        
+    - name: Publish to PyPI
+      run: uv publish
