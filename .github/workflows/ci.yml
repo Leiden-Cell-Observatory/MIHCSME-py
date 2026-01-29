@@ -39,12 +39,12 @@ jobs:
     - name: Install zeroc-ice (Linux)
       if: runner.os == 'Linux'
       run: |
-        uv pip install --system "https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-${{ steps.python-version.outputs.cp_version }}-${{ steps.python-version.outputs.cp_version }}-manylinux_2_28_x86_64.whl"
+        uv pip install "https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-${{ steps.python-version.outputs.cp_version }}-${{ steps.python-version.outputs.cp_version }}-manylinux_2_28_x86_64.whl"
     
     - name: Install zeroc-ice (Windows)
       if: runner.os == 'Windows'
       run: |
-        uv pip install --system "https://github.com/glencoesoftware/zeroc-ice-py-win-x86_64/releases/download/20240325/zeroc_ice-3.6.5-${{ steps.python-version.outputs.cp_version }}-${{ steps.python-version.outputs.cp_version }}-win_amd64.whl"
+        uv pip install "https://github.com/glencoesoftware/zeroc-ice-py-win-x86_64/releases/download/20240325/zeroc_ice-3.6.5-${{ steps.python-version.outputs.cp_version }}-${{ steps.python-version.outputs.cp_version }}-win_amd64.whl"
     
     - name: Install dependencies
       run: uv sync --all-extras --dev
