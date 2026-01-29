@@ -28,9 +28,9 @@ class TestOrganizeIntoGroups:
         assert result["DataOwner"]["E-Mail Address"] == "john@example.com"
         assert result["DataOwner"]["ORCID investigator"] == "https://orcid.org/0000-0002-3704-3675"
 
-        assert "InvestigationInformation" in result
-        assert result["InvestigationInformation"]["Project ID"] == "EuTOX"
-        assert result["InvestigationInformation"]["Investigation Title"] == "Test Investigation"
+        assert "InvestigationInfo" in result
+        assert result["InvestigationInfo"]["Project ID"] == "EuTOX"
+        assert result["InvestigationInfo"]["Investigation Title"] == "Test Investigation"
 
     def test_organize_study_fields(self):
         """Test that study fields are properly grouped."""

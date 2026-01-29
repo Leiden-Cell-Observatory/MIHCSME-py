@@ -677,10 +677,10 @@ def _organize_into_groups(flat_dict: Dict[str, Any]) -> Dict[str, Dict[str, Any]
         "Institute": "DataOwner",
         "E-Mail Address": "DataOwner",
         "ORCID investigator": "DataOwner",
-        "Project ID": "InvestigationInformation",
-        "Investigation Title": "InvestigationInformation",
-        "Investigation internal ID": "InvestigationInformation",
-        "Investigation description": "InvestigationInformation",
+        "Project ID": "InvestigationInfo",
+        "Investigation Title": "InvestigationInfo",
+        "Investigation internal ID": "InvestigationInfo",
+        "Investigation description": "InvestigationInfo",
         # Study groups
         "Study Title": "Study",
         "Study internal ID": "Study",
@@ -733,22 +733,28 @@ def _organize_into_groups(flat_dict: Dict[str, Any]) -> Dict[str, Dict[str, Any]
     groups = {}
     for key, value in flat_dict.items():
         # Find the group for this key
-        group_name = known_groups.get(key)
+        assigned_group = known_groups.get(key)
 
-        if not group_name:
-            # Try to infer from key prefix
-            if key.startswith("Channel ") or key == "Channel Transmission id":
-                group_name = "Specimen"
+        if not assigned_group:
+            # Try to infer from key prefix for fields not in known_groups
+            if key.startswith("Image "):
+                # Image-related fields: check if microscope-related
+                if "Microscope" in key or "microscope" in key:
+                    assigned_group = "ImageAcquisition"
+                else:
+                    assigned_group = "ImageData"
+            elif key.startswith("Channel ") or key == "Channel Transmission id":
+                assigned_group = "Specimen"
             elif "ORCID" in key and "Collaborator" in key:
-                group_name = "DataCollaborator"
+                assigned_group = "DataCollaborator"
             else:
                 # Default: use "Metadata" as fallback group
-                group_name = "Metadata"
+                assigned_group = "Metadata"
 
         # Add to group
-        if group_name not in groups:
-            groups[group_name] = {}
-        groups[group_name][key] = value
+        if assigned_group not in groups:
+            groups[assigned_group] = {}
+        groups[assigned_group][key] = value
 
     return groups
 
