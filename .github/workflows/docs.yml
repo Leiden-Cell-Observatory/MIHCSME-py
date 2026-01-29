@@ -40,7 +40,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install -e ".[docs]" --no-build-package zeroc-ice
+          uv pip install -e ".[docs]" --no-build zeroc-ice
 
       - name: Configure Git
         run: |
