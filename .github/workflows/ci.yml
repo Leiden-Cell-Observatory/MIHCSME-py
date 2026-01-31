@@ -28,34 +28,9 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         enable-cache: true
-    
-    - name: Set Python version variable
-      id: python-version
-      run: |
-        if [[ "${{ matrix.python-version }}" == "3.10" ]]; then
-          echo "cp_version=cp310" >> $GITHUB_OUTPUT
-        elif [[ "${{ matrix.python-version }}" == "3.11" ]]; then
-          echo "cp_version=cp311" >> $GITHUB_OUTPUT
-        elif [[ "${{ matrix.python-version }}" == "3.12" ]]; then
-          echo "cp_version=cp312" >> $GITHUB_OUTPUT
-        fi
-      shell: bash
-
-    - name: Create virtual environment
-      run: uv venv
-
-    - name: Install zeroc-ice (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        uv pip install "https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-${{ steps.python-version.outputs.cp_version }}-${{ steps.python-version.outputs.cp_version }}-manylinux_2_28_x86_64.whl"
-
-    - name: Install zeroc-ice (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        uv pip install "https://github.com/glencoesoftware/zeroc-ice-py-win-x86_64/releases/download/20240325/zeroc_ice-3.6.5-${{ steps.python-version.outputs.cp_version }}-${{ steps.python-version.outputs.cp_version }}-win_amd64.whl"
 
     - name: Install dependencies
-      run: uv pip install -e ".[dev]" --no-build zeroc-ice
+      run: uv pip install -e ".[dev]" --no-build-isolation
         
     - name: Run unit tests
       run: uv run pytest tests/ -v     
