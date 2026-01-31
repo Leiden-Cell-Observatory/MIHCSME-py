@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "mihcsme-py"
-version = "0.1.0"
+version = "0.1.1"
 description = "Convert MIHCSME metadata from Excel to Pydantic model and upload to OMERO"
 readme = "README.md"
 requires-python = ">=3.9"
