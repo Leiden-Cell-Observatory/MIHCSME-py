@@ -2,7 +2,6 @@
 
 Convert MIHCSME (Minimum Information about a High Content Screening Microscopy Experiment) metadata from Excel spreadsheets to validated Pydantic models and upload to OMERO.
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![CI/CD](https://github.com/Leiden-Cell-Observatory/mihcsme-py/actions/workflows/ci.yml/badge.svg)](https://github.com/Leiden-Cell-Observatory/mihcsme-py/actions)
 [![Documentation](https://github.com/Leiden-Cell-Observatory/mihcsme-py/actions/workflows/docs.yml/badge.svg)](https://leiden-cell-observatory.github.io/mihcsme-py/)
 [![PyPI version](https://img.shields.io/pypi/v/mihcsme-py)](https://pypi.org/project/mihcsme-py/)
