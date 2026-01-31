@@ -84,9 +84,9 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/MIHCSME_OMERO"
-Repository = "https://github.com/yourusername/MIHCSME_OMERO"
-Issues = "https://github.com/yourusername/MIHCSME_OMERO/issues"
+Homepage = "https://github.com/Leiden-Cell-Observatory/MIHCSME_OMERO"
+Repository = "https://github.com/Leiden-Cell-Observatory/MIHCSME_OMERO"
+Issues = "https://github.com/Leiden-Cell-Observatory/MIHCSME_OMERO/issues"
 
 [project.scripts]
 mihcsme = "mihcsme_py.cli:app"
