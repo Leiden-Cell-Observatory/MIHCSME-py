@@ -1,12 +1,16 @@
 """Upload MIHCSME metadata to OMERO using omero-py directly."""
 
+from __future__ import annotations
+
 import logging
-from typing import Any, Dict, Literal
+from typing import TYPE_CHECKING, Any, Dict, Literal
 
 import pandas as pd
-from omero.gateway import BlitzGateway
 
 from mihcsme_py.models import MIHCSMEMetadata
+
+if TYPE_CHECKING:
+    from omero.gateway import BlitzGateway
 from mihcsme_py.omero_connection import (
     create_map_annotation,
     delete_annotations_from_object,

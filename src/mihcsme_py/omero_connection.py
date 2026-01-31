@@ -1,12 +1,25 @@
 """OMERO connection and utility functions using omero-py directly."""
 
-import logging
-from typing import Optional
+from __future__ import annotations
 
-import omero
-from omero.gateway import BlitzGateway
+import logging
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from omero.gateway import BlitzGateway
 
 logger = logging.getLogger(__name__)
+
+
+def _check_omero_available() -> None:
+    """Check if omero-py is installed, raise ImportError if not."""
+    try:
+        import omero  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "omero-py is required for OMERO functionality. "
+            "Install zeroc-ice first, then install with: pip install mihcsme-py[omero]"
+        ) from e
 
 
 def connect(
@@ -34,6 +47,9 @@ def connect(
     Raises:
         ConnectionError: If connection fails
     """
+    _check_omero_available()
+    from omero.gateway import BlitzGateway
+
     logger.info(f"Connecting to OMERO: {user}@{host}:{port}")
 
     conn = BlitzGateway(user, password, host=host, port=port, secure=secure)
@@ -78,6 +94,9 @@ def create_map_annotation(
     if not key_value_pairs:
         logger.debug(f"No key-value pairs to annotate for {object_type} {object_id}")
         return None
+
+    _check_omero_available()
+    import omero.gateway
 
     try:
         # Get the target object
