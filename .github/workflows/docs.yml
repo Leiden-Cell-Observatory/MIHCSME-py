@@ -25,14 +25,13 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for git info plugin
 
-      - name: Install uv and set Python version
+      - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          python-version: '3.11'
           enable-cache: true
 
-      - name: Install dependencies
-        run: uv pip install -e ".[docs]" --no-build-isolation
+      - name: Install Python
+        run: uv python install 3.11
 
       - name: Configure Git
         run: |
@@ -41,10 +40,8 @@ jobs:
 
       - name: Deploy documentation
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          uv run mkdocs gh-deploy --force --clean --verbose
+        run: uv run --extra docs mkdocs gh-deploy --force --clean --verbose
 
       - name: Build documentation (PR preview)
         if: github.event_name == 'pull_request'
-        run: |
-          uv run mkdocs build --verbose
+        run: uv run --extra docs mkdocs build --verbose
