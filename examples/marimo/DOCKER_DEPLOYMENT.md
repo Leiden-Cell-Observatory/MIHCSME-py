@@ -24,6 +24,22 @@ docker build -t mihcsme-omero-app .
 docker run -p 8080:8080 -it mihcsme-omero-app
 ```
 
+### 2a. Run with live-editable app script (recommended for development)
+
+Mount the local `marimo_omero_app.py` into the container so you can edit it without rebuilding:
+
+**Linux/macOS:**
+```bash
+docker run -p 8080:8080 -v "$(pwd)/marimo_omero_app.py:/app/marimo_omero_app.py" -it mihcsme-omero-app
+```
+
+**Windows (PowerShell):**
+```powershell
+docker run -p 8080:8080 -v "${PWD}\marimo_omero_app.py:/app/marimo_omero_app.py" -it mihcsme-omero-app
+```
+
+Changes to `marimo_omero_app.py` on your host machine will be immediately reflected — marimo hot-reloads the file automatically.
+
 ### 3. Access the application
 
 Open your browser and navigate to: http://localhost:8080
