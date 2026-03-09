@@ -20,8 +20,23 @@ docker build -t mihcsme-omero-app .
 
 ### 2. Run the container
 
+**Foreground** (logs visible in terminal, stops when you close it):
 ```bash
 docker run -p 8080:8080 -it mihcsme-omero-app
+```
+
+**Background/detached** (keeps running after closing the terminal):
+```bash
+docker run -d -p 8080:8080 --name mihcsme-omero mihcsme-omero-app
+```
+
+Useful commands when running detached:
+```bash
+docker logs mihcsme-omero        # view logs
+docker logs -f mihcsme-omero     # follow/stream logs
+docker stop mihcsme-omero        # stop the container
+docker start mihcsme-omero       # restart it
+docker rm mihcsme-omero          # remove it
 ```
 
 ### 2a. Run with live-editable app script (recommended for development)
