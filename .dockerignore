@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+ENV/
+.Python
+
+# Tests
+tests/
+
+# Notebooks
+*.ipynb
+Untitled*.ipynb
+
+# Marimo session state
+examples/marimo/__marimo__/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs
+docs/
+mkdocs.yml
+
+# Scripts
+scripts/
+
+# R examples
+examples/R/
+
+# Cache
+**/__pycache__/
+**/.pytest_cache/
