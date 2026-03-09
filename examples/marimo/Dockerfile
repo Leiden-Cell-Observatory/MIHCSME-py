@@ -35,4 +35,5 @@ RUN useradd -m app_user
 USER app_user
 
 # Run the marimo app
-CMD ["marimo", "run", "marimo_omero_app.py", "--host", "0.0.0.0", "-p", "8080"]
+# --no-sandbox: skip marimo's inline dependency sandbox and use the pre-installed packages
+CMD ["marimo", "run", "marimo_omero_app.py", "--no-sandbox", "--host", "0.0.0.0", "-p", "8080"]
