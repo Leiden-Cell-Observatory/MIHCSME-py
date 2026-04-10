@@ -29,6 +29,144 @@ SHEET_ASSAY = "AssayInformation"
 SHEET_CONDITIONS = "AssayConditions"
 
 
+def validate_metadata_against_omero(
+    conn: BlitzGateway,
+    metadata: MIHCSMEMetadata,
+    target_type: Literal["Screen", "Plate"],
+    target_id: int,
+) -> Dict[str, Any]:
+    """
+    Validate metadata against OMERO before uploading (dry run).
+
+    Checks that plates and wells in the metadata match what exists in OMERO.
+    Call this independently to preview issues, or let upload_metadata_to_omero()
+    call it automatically when strict=True.
+
+    Args:
+        conn: Active OMERO connection (BlitzGateway)
+        metadata: MIHCSMEMetadata Pydantic model instance
+        target_type: Type of target object ("Screen" or "Plate")
+        target_id: ID of the target OMERO object
+
+    Returns:
+        Dictionary with validation results:
+            - valid: True if no errors found
+            - errors: List of error messages (data would be lost)
+            - warnings: List of warning messages (non-blocking)
+            - plates: Dict with 'in_metadata_not_omero' and 'in_omero_not_metadata' lists
+            - wells: Dict mapping plate_name -> {'in_metadata_not_omero': [...], 'in_omero_not_metadata': [...]}
+    """
+    result: Dict[str, Any] = {
+        "valid": True,
+        "errors": [],
+        "warnings": [],
+        "plates": {
+            "in_metadata_not_omero": [],
+            "in_omero_not_metadata": [],
+        },
+        "wells": {},
+    }
+
+    # Check target exists
+    plates = _get_plates_to_process(conn, target_type, target_id)
+    if not plates:
+        result["valid"] = False
+        result["errors"].append(
+            f"{target_type} with ID {target_id} not found or has no plates in OMERO."
+        )
+        return result
+
+    # Get plate names from OMERO
+    omero_plate_names = {plate.getName() for plate in plates}
+    omero_plate_map = {plate.getName(): plate for plate in plates}
+
+    # Get plate names from metadata
+    metadata_plate_names = set()
+    if metadata.assay_conditions:
+        metadata_plate_names = {c.plate for c in metadata.assay_conditions}
+
+    if not metadata_plate_names:
+        result["warnings"].append("No assay conditions in metadata to validate.")
+        return result
+
+    # Plate name validation
+    plates_in_metadata_not_omero = sorted(metadata_plate_names - omero_plate_names)
+    plates_in_omero_not_metadata = sorted(omero_plate_names - metadata_plate_names)
+
+    if plates_in_metadata_not_omero:
+        result["valid"] = False
+        result["plates"]["in_metadata_not_omero"] = plates_in_metadata_not_omero
+        result["errors"].append(
+            f"Plates in metadata but NOT in OMERO: {', '.join(plates_in_metadata_not_omero)}"
+        )
+
+    if plates_in_omero_not_metadata:
+        result["plates"]["in_omero_not_metadata"] = plates_in_omero_not_metadata
+        result["warnings"].append(
+            f"Plates in OMERO but NOT in metadata: {', '.join(plates_in_omero_not_metadata)}"
+        )
+
+    # Per-plate well validation (only for plates that exist in both)
+    matching_plates = metadata_plate_names & omero_plate_names
+
+    # Build metadata well lookup per plate
+    metadata_wells_per_plate: Dict[str, set] = {}
+    for condition in metadata.assay_conditions:
+        plate_name = condition.plate
+        if plate_name in matching_plates:
+            if plate_name not in metadata_wells_per_plate:
+                metadata_wells_per_plate[plate_name] = set()
+            metadata_wells_per_plate[plate_name].add(condition.well)
+
+    for plate_name in sorted(matching_plates):
+        plate_obj = omero_plate_map[plate_name]
+        plate_id = plate_obj.getId()
+
+        # Get OMERO wells for this plate
+        try:
+            omero_wells = get_wells_from_plate(conn, plate_id)
+        except Exception as e:
+            result["valid"] = False
+            result["errors"].append(
+                f"Failed to retrieve wells for plate '{plate_name}' (ID: {plate_id}): {e}"
+            )
+            continue
+
+        omero_well_names = set()
+        for well in omero_wells:
+            row = well.row
+            col = well.column
+            well_name = f"{chr(ord('A') + row)}{col + 1:02d}"
+            omero_well_names.add(well_name)
+
+        metadata_well_names = metadata_wells_per_plate.get(plate_name, set())
+
+        wells_in_metadata_not_omero = sorted(metadata_well_names - omero_well_names)
+        wells_in_omero_not_metadata = sorted(omero_well_names - metadata_well_names)
+
+        plate_well_info: Dict[str, list] = {}
+
+        if wells_in_metadata_not_omero:
+            result["valid"] = False
+            plate_well_info["in_metadata_not_omero"] = wells_in_metadata_not_omero
+            result["errors"].append(
+                f"Plate '{plate_name}': {len(wells_in_metadata_not_omero)} well(s) "
+                f"in metadata but NOT in OMERO: {', '.join(wells_in_metadata_not_omero)}"
+            )
+
+        if wells_in_omero_not_metadata:
+            plate_well_info["in_omero_not_metadata"] = wells_in_omero_not_metadata
+            result["warnings"].append(
+                f"Plate '{plate_name}': {len(wells_in_omero_not_metadata)} well(s) "
+                f"in OMERO but NOT in metadata: {', '.join(wells_in_omero_not_metadata)}"
+            )
+
+        if plate_well_info:
+            result["wells"][plate_name] = plate_well_info
+
+    return result
+
+
 def upload_metadata_to_omero(
     conn: BlitzGateway,
     metadata: MIHCSMEMetadata,
@@ -36,9 +174,15 @@ def upload_metadata_to_omero(
     target_id: int,
     namespace: str = DEFAULT_NS_BASE,
     replace: bool = False,
+    strict: bool = True,
 ) -> Dict[str, Any]:
     """
     Upload MIHCSME metadata to OMERO from a Pydantic model.
+
+    Before uploading, validates that plates and wells in the metadata match
+    what exists in OMERO. In strict mode (default), the upload is blocked
+    if validation finds errors. In non-strict mode, mismatches are logged
+    as warnings and matching data is uploaded.
 
     Args:
         conn: Active OMERO connection (BlitzGateway)
@@ -47,20 +191,21 @@ def upload_metadata_to_omero(
         target_id: ID of the target OMERO object
         namespace: Base namespace for annotations (default: "MIHCSME")
         replace: If True, remove existing annotations before uploading
+        strict: If True (default), block upload when validation finds errors.
+                If False, proceed with matching plates/wells and log warnings.
 
     Returns:
         Dictionary with upload summary:
             - status: 'success', 'partial_success', or 'error'
             - message: Human-readable message
+            - validation: Result from validate_metadata_against_omero()
             - wells_processed: Number of wells processed
             - wells_succeeded: Number of wells successfully annotated
             - wells_failed: Number of wells that failed
+            - failed_wells: Dict mapping plate_name -> list of failed well names
             - removed_annotations: Number of annotations removed (if replace=True)
-
-    Raises:
-        ValueError: If target_type is not 'Screen' or 'Plate'
     """
-    summary = {
+    summary: Dict[str, Any] = {
         "status": "error",
         "message": "Initialization failed",
         "target_type": target_type,
@@ -68,6 +213,7 @@ def upload_metadata_to_omero(
         "wells_processed": 0,
         "wells_succeeded": 0,
         "wells_failed": 0,
+        "failed_wells": {},
         "removed_annotations": 0,
     }
 
@@ -78,6 +224,26 @@ def upload_metadata_to_omero(
         )
         logger.error(summary["message"])
         return summary
+
+    # Run validation before any uploads
+    validation = validate_metadata_against_omero(conn, metadata, target_type, target_id)
+    summary["validation"] = validation
+
+    if not validation["valid"]:
+        if strict:
+            error_lines = ["Metadata validation failed:"]
+            for err in validation["errors"]:
+                error_lines.append(f"  - {err}")
+            if validation["warnings"]:
+                error_lines.append("Warnings:")
+                for warn in validation["warnings"]:
+                    error_lines.append(f"  - {warn}")
+            summary["message"] = "\n".join(error_lines)
+            logger.error(summary["message"])
+            return summary
+        else:
+            for warn in validation["errors"] + validation["warnings"]:
+                logger.warning(f"Validation (non-strict): {warn}")
 
     processed_ok = True
 
@@ -167,11 +333,13 @@ def upload_metadata_to_omero(
                     plate_identifier = plate.getName()
                     logger.debug(f"Processing Plate ID: {plate_id}, Name: '{plate_identifier}'")
 
-                    s, f = _apply_assay_conditions_to_wells(
+                    s, f, failed_names = _apply_assay_conditions_to_wells(
                         conn, plate_id, plate_identifier, assay_conditions_df, ns_conditions
                     )
                     total_well_success += s
                     total_well_fail += f
+                    if failed_names:
+                        summary["failed_wells"][plate_identifier] = failed_names
 
                 summary["wells_succeeded"] = total_well_success
                 summary["wells_failed"] = total_well_fail
@@ -186,7 +354,7 @@ def upload_metadata_to_omero(
         logger.info("UPLOAD SUMMARY")
         logger.info(f"{'=' * 80}")
 
-        if processed_ok:
+        if processed_ok and summary["wells_failed"] == 0:
             summary["status"] = "success"
             if replace:
                 summary["message"] = (
@@ -197,9 +365,24 @@ def upload_metadata_to_omero(
                 summary["message"] = "Annotations applied successfully."
         else:
             summary["status"] = "partial_success"
-            summary["message"] = (
-                f"Some {target_type.lower()}-level annotations may have failed (check logs)."
-            )
+            # Build specific failure message
+            fail_details = []
+            for plate_name, wells in summary["failed_wells"].items():
+                fail_details.append(
+                    f"Plate '{plate_name}': {len(wells)} failed well(s): {', '.join(wells)}"
+                )
+            if fail_details:
+                summary["message"] = (
+                    f"Upload partially succeeded. "
+                    f"Wells: {summary['wells_succeeded']}/{summary['wells_processed']} succeeded. "
+                    + "; ".join(fail_details)
+                )
+            else:
+                summary["message"] = (
+                    f"Upload partially succeeded. "
+                    f"Wells: {summary['wells_succeeded']}/{summary['wells_processed']} succeeded. "
+                    f"Some annotations may have failed."
+                )
 
         # Log summary details
         if replace:
@@ -314,11 +497,12 @@ def _apply_assay_conditions_to_wells(
     Apply AssayConditions metadata to wells.
 
     Returns:
-        Tuple of (success_count, fail_count)
+        Tuple of (success_count, fail_count, failed_well_names)
     """
     logger.info(f"Processing Wells for Plate ID: {plate_id} (Identifier: '{plate_identifier}')")
     success_count = 0
     fail_count = 0
+    failed_well_names: list = []
 
     # Filter metadata for this plate
     try:
@@ -332,12 +516,18 @@ def _apply_assay_conditions_to_wells(
                 f"No metadata found for Plate identifier '{plate_identifier}' in AssayConditions"
             )
             wells = get_wells_from_plate(conn, plate_id)
-            return 0, len(wells)
+            well_names = [
+                f"{chr(ord('A') + w.row)}{w.column + 1:02d}" for w in wells
+            ]
+            return 0, len(wells), well_names
 
         if "Well" not in plate_metadata.columns:
             logger.error(f"Missing 'Well' column for Plate '{plate_identifier}'")
             wells = get_wells_from_plate(conn, plate_id)
-            return 0, len(wells)
+            well_names = [
+                f"{chr(ord('A') + w.row)}{w.column + 1:02d}" for w in wells
+            ]
+            return 0, len(wells), well_names
 
         # Create metadata lookup by normalized well name
         metadata_lookup = {}
@@ -358,20 +548,20 @@ def _apply_assay_conditions_to_wells(
 
     except Exception as e:
         logger.error(f"Error filtering metadata for Plate '{plate_identifier}': {e}")
-        return 0, 0
+        return 0, 0, []
 
     # Get wells from OMERO
     try:
         wells = get_wells_from_plate(conn, plate_id)
         if not wells:
             logger.warning(f"No wells found in OMERO Plate ID {plate_id}")
-            return 0, len(metadata_lookup)
+            return 0, len(metadata_lookup), list(metadata_lookup.keys())
 
         logger.debug(f"OMERO contains {len(wells)} wells")
 
     except Exception as e:
         logger.error(f"Error retrieving wells for Plate ID {plate_id}: {e}")
-        return 0, len(metadata_lookup)
+        return 0, len(metadata_lookup), list(metadata_lookup.keys())
 
     # Match metadata to wells
     processed_well_names = set()
@@ -405,15 +595,18 @@ def _apply_assay_conditions_to_wells(
                 else:
                     logger.error(f"  Failed to apply metadata to Well ID {well_id}")
                     fail_count += 1
+                    failed_well_names.append(well_name)
             except Exception as e:
                 logger.error(f"  Error applying metadata to Well ID {well_id}: {e}")
                 fail_count += 1
+                failed_well_names.append(well_name)
         else:
             logger.warning(
                 f"  No metadata found for Well '{well_name}' (ID: {well_id}) "
                 f"in Plate '{plate_identifier}'"
             )
             fail_count += 1
+            failed_well_names.append(well_name)
 
     # Check for extra metadata wells
     extra_metadata = metadata_wells - processed_well_names
@@ -423,12 +616,13 @@ def _apply_assay_conditions_to_wells(
             f"{', '.join(sorted(list(extra_metadata)))}"
         )
         fail_count += len(extra_metadata)
+        failed_well_names.extend(sorted(extra_metadata))
 
     logger.info(
         f"Plate {plate_id} ('{plate_identifier}') processing complete. "
         f"Success: {success_count}, Failures: {fail_count}"
     )
-    return success_count, fail_count
+    return success_count, fail_count, failed_well_names
 
 
 def _normalize_well_name(well_name: str) -> str:

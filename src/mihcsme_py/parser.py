@@ -193,6 +193,21 @@ def _parse_assay_conditions(xls: pd.ExcelFile, sheet_name: str) -> list:
         if "Plate" not in headers or "Well" not in headers:
             raise ValueError(f"Missing required 'Plate' or 'Well' column in {sheet_name}")
 
+        # Check for duplicate column names
+        non_nan_headers = [h for h in headers if not pd.isna(h)]
+        seen = set()
+        duplicates = set()
+        for h in non_nan_headers:
+            if h in seen:
+                duplicates.add(h)
+            seen.add(h)
+        if duplicates:
+            raise ValueError(
+                f"Duplicate column names found in '{sheet_name}': "
+                f"{', '.join(sorted(duplicates))}. "
+                f"Each column name must be unique."
+            )
+
         # Get the data rows
         data_rows = df.iloc[1:].copy()
         data_rows.columns = headers

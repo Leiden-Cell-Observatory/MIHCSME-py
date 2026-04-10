@@ -111,6 +111,7 @@ def _(ENABLE_LLM_FEATURES):
         download_metadata_from_omero,
         parse_excel_to_model,
         upload_metadata_to_omero,
+        validate_metadata_against_omero,
         write_metadata_to_excel,
     )
     from mihcsme_py.omero_connection import connect as omero_connect
@@ -172,6 +173,7 @@ def _(ENABLE_LLM_FEATURES):
         parse_excel_to_model,
         pd,
         upload_metadata_to_omero,
+        validate_metadata_against_omero,
         write_metadata_to_excel,
     )
 
@@ -1940,12 +1942,19 @@ def _(mo):
         value=False,
         label="Replace existing annotations (removes old MIHCSME annotations first)",
     )
+    omero_upload_strict = mo.ui.checkbox(
+        value=True,
+        label="Strict validation (block upload on mismatches)",
+    )
     omero_upload_button = mo.ui.run_button(label="Upload Metadata to OMERO")
+    omero_validate_button = mo.ui.run_button(label="Validate Metadata (dry run)")
     return (
         omero_upload_button,
         omero_upload_replace,
+        omero_upload_strict,
         omero_upload_target_id,
         omero_upload_target_type,
+        omero_validate_button,
     )
 
 
@@ -1968,6 +1977,7 @@ def _(
     mo,
     omero_upload_button,
     omero_upload_replace,
+    omero_upload_strict,
     omero_upload_target_id,
     omero_upload_target_type,
     study_updated_biosample,
@@ -1977,6 +1987,19 @@ def _(
     study_updated_study,
     upload_metadata_to_omero,
 ):
+    def _build_validation_detail_md(validation):
+        """Build markdown string from validation result."""
+        lines = []
+        if validation.get("errors"):
+            lines.append("**Errors (upload blocked):**")
+            for err in validation["errors"]:
+                lines.append(f"- {err}")
+        if validation.get("warnings"):
+            lines.append("\n**Warnings:**")
+            for warn in validation["warnings"]:
+                lines.append(f"- {warn}")
+        return "\n".join(lines)
+
     # OMERO Upload Handler
     omero_upload_result = None
     omero_upload_error = None
@@ -2039,6 +2062,7 @@ def _(
                     target_type=omero_upload_target_type.value,
                     target_id=int(omero_upload_target_id.value),
                     replace=omero_upload_replace.value,
+                    strict=omero_upload_strict.value,
                 )
 
                 if _result["status"] == "success":
@@ -2056,7 +2080,14 @@ def _(
                         f"Wells: {_result['wells_succeeded']}/{_result['wells_processed']}"
                     )
                 else:
-                    omero_upload_error = _result["message"]
+                    _validation = _result.get("validation")
+                    if _validation and not _validation["valid"]:
+                        omero_upload_error = (
+                            "**Metadata validation failed**\n\n"
+                            + _build_validation_detail_md(_validation)
+                        )
+                    else:
+                        omero_upload_error = _result["message"]
 
             except Exception as e:
                 omero_upload_error = str(e)
@@ -2064,7 +2095,7 @@ def _(
     # Build upload status display
     if omero_upload_error:
         omero_upload_display = mo.callout(
-            mo.md(f"**Upload Error:** {omero_upload_error}"), kind="danger"
+            mo.md(omero_upload_error), kind="danger"
         )
     elif omero_upload_result:
         if "Partial" in omero_upload_result:
@@ -2074,6 +2105,70 @@ def _(
     else:
         omero_upload_display = mo.md("")
     return (omero_upload_display,)
+
+
+@app.cell
+def _(
+    get_omero_conn,
+    metadata_updated,
+    mo,
+    omero_upload_target_id,
+    omero_upload_target_type,
+    omero_validate_button,
+    validate_metadata_against_omero,
+):
+    # OMERO Validation (dry run) Handler
+    omero_validate_display = mo.md("")
+
+    if omero_validate_button.value:
+        _conn = get_omero_conn()
+        if _conn is None:
+            omero_validate_display = mo.callout(
+                mo.md("**Not connected to OMERO.** Please connect first."), kind="danger"
+            )
+        elif metadata_updated is None:
+            omero_validate_display = mo.callout(
+                mo.md("**No metadata loaded.** Please load a template first."), kind="danger"
+            )
+        else:
+            try:
+                _validation = validate_metadata_against_omero(
+                    conn=_conn,
+                    metadata=metadata_updated,
+                    target_type=omero_upload_target_type.value,
+                    target_id=int(omero_upload_target_id.value),
+                )
+
+                if _validation["valid"] and not _validation["warnings"]:
+                    omero_validate_display = mo.callout(
+                        mo.md("**Validation passed.** All plates and wells in metadata match OMERO."),
+                        kind="success",
+                    )
+                elif _validation["valid"] and _validation["warnings"]:
+                    _warn_lines = ["**Validation passed with warnings:**\n"]
+                    for _w in _validation["warnings"]:
+                        _warn_lines.append(f"- {_w}")
+                    omero_validate_display = mo.callout(
+                        mo.md("\n".join(_warn_lines)), kind="warn"
+                    )
+                else:
+                    _detail_lines = ["**Validation failed:**\n"]
+                    if _validation["errors"]:
+                        _detail_lines.append("**Errors (would block upload):**")
+                        for _e in _validation["errors"]:
+                            _detail_lines.append(f"- {_e}")
+                    if _validation["warnings"]:
+                        _detail_lines.append("\n**Warnings:**")
+                        for _w in _validation["warnings"]:
+                            _detail_lines.append(f"- {_w}")
+                    omero_validate_display = mo.callout(
+                        mo.md("\n".join(_detail_lines)), kind="danger"
+                    )
+            except Exception as e:
+                omero_validate_display = mo.callout(
+                    mo.md(f"**Validation error:** {e}"), kind="danger"
+                )
+    return (omero_validate_display,)
 
 
 @app.cell(hide_code=True)
@@ -2095,9 +2190,12 @@ def _(
     omero_upload_button,
     omero_upload_display,
     omero_upload_replace,
+    omero_upload_strict,
     omero_upload_target_id,
     omero_upload_target_type,
     omero_user,
+    omero_validate_button,
+    omero_validate_display,
 ):
     # Build OMERO Tab Content
     _conn = get_omero_conn()
@@ -2143,10 +2241,13 @@ def _(
 
             Push your current metadata to a Screen or Plate in OMERO.
             This will create MapAnnotations on the target object and its wells.
+            Use **Validate** to check plate/well matching before uploading.
             """),
             mo.hstack([omero_upload_target_type, omero_upload_target_id], gap=2),
             omero_upload_replace,
-            omero_upload_button,
+            omero_upload_strict,
+            mo.hstack([omero_validate_button, omero_upload_button], gap=2),
+            omero_validate_display,
             omero_upload_display,
         ],
         gap=2,
