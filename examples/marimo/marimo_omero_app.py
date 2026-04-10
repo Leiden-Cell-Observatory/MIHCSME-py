@@ -12,10 +12,11 @@
 # zeroc-ice = { url = "https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-cp312-cp312-manylinux_2_28_x86_64.whl" }
 # mihcsme-py = { git = "https://github.com/Leiden-Cell-Observatory/MIHCSME-py.git", rev = "marimo_app" }
 # ///
+
 import marimo
 
 __generated_with = "0.19.4"
-app = marimo.App(width="full")
+app = marimo.App(width="full", app_title="MIHCSME OMERO App")
 
 
 @app.cell(hide_code=True)
