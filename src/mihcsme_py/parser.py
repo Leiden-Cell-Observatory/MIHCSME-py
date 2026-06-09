@@ -1,11 +1,13 @@
 """Parse MIHCSME Excel files into Pydantic models."""
 
+import datetime
 import logging
 from io import BytesIO
 from pathlib import Path
 from typing import Union
 
 import pandas as pd
+from openpyxl.utils import get_column_letter
 
 from mihcsme_py.models import (
     AssayCondition,
@@ -177,6 +179,13 @@ def _parse_assay_conditions(xls: pd.ExcelFile, sheet_name: str) -> list:
     logger.debug(f"Parsing assay conditions sheet: {sheet_name}")
 
     try:
+        # Detect cells that Excel stored as real dates. This happens when Excel
+        # silently auto-converts text (e.g. the antibody clone "Oct4" or gene
+        # names like "MARCH1"/"SEPT9") into dates. Reading with dtype=str would
+        # mask this by turning them into strings like "2026-10-04 00:00:00", so
+        # we scan an untyped read where such cells come back as datetime.
+        _check_for_date_typed_cells(xls, sheet_name)
+
         df = pd.read_excel(xls, sheet_name=sheet_name, dtype=str)
 
         # Skip rows that start with '#'
@@ -242,6 +251,36 @@ def _parse_assay_conditions(xls: pd.ExcelFile, sheet_name: str) -> list:
     except Exception as e:
         logger.error(f"Error parsing assay conditions '{sheet_name}': {e}")
         raise
+
+
+def _check_for_date_typed_cells(xls: pd.ExcelFile, sheet_name: str) -> None:
+    """Raise a clear error if any cell in the sheet is stored as a date.
+
+    Excel commonly mangles text into dates (the antibody clone "Oct4" becomes
+    "Oct 4", gene names like "MARCH1"/"SEPT9" become dates, etc.). Such cells
+    are stored as real Excel dates, silently corrupting the data. We refuse to
+    parse and name the exact cells so the user can fix them at the source.
+    """
+    raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+
+    bad_cells = []
+    for row_idx in range(raw.shape[0]):
+        for col_idx in range(raw.shape[1]):
+            value = raw.iat[row_idx, col_idx]
+            if isinstance(value, (pd.Timestamp, datetime.datetime, datetime.date)):
+                # header=None means Excel row N == DataFrame row N (1-based +1)
+                coord = f"{get_column_letter(col_idx + 1)}{row_idx + 1}"
+                bad_cells.append(coord)
+
+    if bad_cells:
+        cells = ", ".join(bad_cells)
+        raise ValueError(
+            f"Date-typed cells found in '{sheet_name}': {cells}. "
+            f"Excel likely auto-converted text (e.g. an antibody clone like "
+            f"'Oct4', or a gene name) into a date, corrupting the value. "
+            f"Fix this in Excel by formatting those cells as Text (or prefixing "
+            f"the value with an apostrophe), then re-save the file."
+        )
 
 
 def _parse_reference_sheet(xls: pd.ExcelFile, sheet_name: str) -> dict:

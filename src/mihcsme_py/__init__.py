@@ -1,6 +1,6 @@
 """MIHCSME OMERO: Convert MIHCSME metadata from Excel to Pydantic models and upload to OMERO."""
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 from mihcsme_py.models import (
     AssayCondition,

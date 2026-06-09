@@ -1,5 +1,6 @@
 """Tests for Excel parser."""
 
+import datetime
 import io
 
 import pandas as pd
@@ -42,4 +43,29 @@ def test_duplicate_column_names_raises_clear_error():
     excel_bytes = _make_excel_bytes(df)
 
     with pytest.raises(ValueError, match="Duplicate column names.*Treatment"):
+        parse_excel_to_model(excel_bytes)
+
+
+def test_date_typed_cells_raise_clear_error():
+    """Excel silently turns text like the clone 'Oct4' into a real date.
+
+    The parser must detect date-typed cells in AssayConditions and refuse to
+    parse, naming the exact cells so the user can fix them in Excel.
+    """
+    df = pd.DataFrame(
+        {
+            "col0": ["Plate", "P1", "P1"],
+            "col1": ["Well", "A01", "A02"],
+            # Excel would store the antibody clone "Oct4" as a real date cell.
+            "col2": [
+                "Channel3AntibodyClone",
+                datetime.datetime(2026, 10, 4),
+                datetime.datetime(2026, 10, 4),
+            ],
+        }
+    )
+
+    excel_bytes = _make_excel_bytes(df)
+
+    with pytest.raises(ValueError, match="Date-typed cells.*C3.*C4"):
         parse_excel_to_model(excel_bytes)
