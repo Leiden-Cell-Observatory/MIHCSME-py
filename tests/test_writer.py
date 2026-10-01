@@ -7,12 +7,23 @@ import pytest
 
 from mihcsme_py.models import (
     AssayCondition,
+    AssayInformation,
+    Channel,
+    DataCollaborator,
     DataOwner,
+    ImageData,
     InvestigationInfo,
     InvestigationInformation,
     MIHCSMEMetadata,
+    Specimen,
 )
-from mihcsme_py.writer import DEFAULT_CONDITION_KEYS, write_metadata_to_excel
+from mihcsme_py.parser import parse_excel_to_model
+from mihcsme_py.writer import (
+    DEFAULT_CONDITION_KEYS,
+    DEFAULT_TEMPLATE_PATH,
+    fill_template,
+    write_metadata_to_excel,
+)
 
 
 def _write(metadata: MIHCSMEMetadata) -> openpyxl.Workbook:
@@ -139,3 +150,99 @@ def test_empty_grouped_sheet_has_column_headers():
         # The header row (row 2 when a comment is present) must have Group/Key/Value
         headers = [ws.cell(row=r, column=1).value for r in range(1, ws.max_row + 1)]
         assert "Group" in headers, f"{sheet_name} missing 'Group' header"
+
+
+# ---------------------------------------------------------------------------
+# fill_template
+# ---------------------------------------------------------------------------
+
+
+def _fill(metadata: MIHCSMEMetadata) -> io.BytesIO:
+    buf = io.BytesIO()
+    fill_template(metadata, buf)
+    buf.seek(0)
+    return buf
+
+
+def _value_of(ws, group: str, key: str):
+    for row in ws.iter_rows(values_only=True):
+        if row[0] == group and row[1] == key:
+            return row[2]
+    raise KeyError((group, key))
+
+
+def _full_metadata() -> MIHCSMEMetadata:
+    return MIHCSMEMetadata(
+        investigation_information=InvestigationInformation(
+            data_owner=DataOwner(first_name="Jane", last_name="Doe"),
+            data_collaborators=[
+                DataCollaborator(orcid="https://orcid.org/0000-0002-3704-3675"),
+                DataCollaborator(orcid="https://orcid.org/0000-0001-2345-6789"),
+                DataCollaborator(orcid="https://orcid.org/0000-0003-1111-2222"),
+            ],
+            investigation_info=InvestigationInfo(
+                project_id="EuTOX", investigation_title="My investigation"
+            ),
+        ),
+        assay_information=AssayInformation(
+            image_data=ImageData(**{"Image number of  z-stacks": "3"}),
+            specimen=Specimen(channels=[Channel(label="Nuclei"), Channel(label="GFP")]),
+        ),
+        assay_conditions=[
+            AssayCondition(
+                plate="P1", well="A01", conditions={"Treatment": "DMSO", "Extra": "x"}
+            ),
+            AssayCondition(plate="P1", well="A02", conditions={"Treatment": "Drug"}),
+        ],
+    )
+
+
+def test_fill_template_keeps_template_structure():
+    wb = openpyxl.load_workbook(_fill(MIHCSMEMetadata()))
+    assert wb.sheetnames == openpyxl.load_workbook(DEFAULT_TEMPLATE_PATH).sheetnames
+    ws = wb["AssayInformation"]
+    assert ws["E5"].value == "Description_Examples_Values"
+    assert len(ws.data_validations.dataValidation) > 0
+
+
+def test_fill_template_writes_values_into_template_rows():
+    wb = openpyxl.load_workbook(_fill(_full_metadata()))
+    inv = wb["InvestigationInformation"]
+    assert _value_of(inv, "DataOwner", "First Name") == "Jane"
+    assert _value_of(inv, "InvestigationInformation", "Project ID") == "EuTOX"
+    assert _value_of(wb["AssayInformation"], "Specimen", "Channel 2 label") == "GFP"
+
+
+def test_fill_template_appends_extra_collaborators():
+    wb = openpyxl.load_workbook(_fill(_full_metadata()))
+    values = [
+        row[2]
+        for row in wb["InvestigationInformation"].iter_rows(values_only=True)
+        if row[0] == "DataCollaborator"
+    ]
+    assert values == [
+        "https://orcid.org/0000-0002-3704-3675",
+        "https://orcid.org/0000-0001-2345-6789",
+        "https://orcid.org/0000-0003-1111-2222",
+    ]
+
+
+def test_fill_template_assay_conditions_keeps_and_extends_columns():
+    ws = openpyxl.load_workbook(_fill(_full_metadata()))["AssayConditions"]
+    rows = list(ws.iter_rows(min_row=5, values_only=True))
+    assert rows[0][:3] == ("Plate", "Well", "Treatment")
+    assert rows[0][-1] == "Extra"
+    assert rows[1][:3] == ("P1", "A01", "DMSO")
+    assert rows[1][-1] == "x"
+    assert len(rows) == 3
+
+
+def test_fill_template_round_trip():
+    original = _full_metadata()
+    parsed = parse_excel_to_model(_fill(original))
+    assert parsed.investigation_information == original.investigation_information
+    assert parsed.assay_information.specimen == original.assay_information.specimen
+    assert parsed.assay_information.image_data == original.assay_information.image_data
+    assert [c.model_dump() for c in parsed.assay_conditions] == [
+        c.model_dump() for c in original.assay_conditions
+    ]
