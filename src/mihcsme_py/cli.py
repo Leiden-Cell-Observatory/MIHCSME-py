@@ -38,7 +38,7 @@ if CLI_AVAILABLE:
     from mihcsme_py.omero_connection import connect
     from mihcsme_py.parser import parse_excel_to_model
     from mihcsme_py.uploader import upload_metadata_to_omero
-    from mihcsme_py.writer import write_metadata_to_excel
+    from mihcsme_py.writer import fill_template, write_metadata_to_excel
 
     app = typer.Typer(
         name="mihcsme",
@@ -181,12 +181,30 @@ if CLI_AVAILABLE:
                 "with .xlsx extension)"
             ),
         ),
+        template: bool = typer.Option(
+            False,
+            "--template",
+            "-t",
+            help=(
+                "Fill the full MIHCSME Excel template (all fields, descriptions, "
+                "dropdowns and reference sheets) instead of a plain export"
+            ),
+        ),
+        template_file: Optional[Path] = typer.Option(
+            None,
+            "--template-file",
+            help="Custom MIHCSME template to fill (implies --template)",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
     ) -> None:
         """
         Convert MIHCSME JSON file to Excel format.
 
         This creates an Excel file from a JSON metadata file, useful for
-        editing or sharing the metadata in Excel format.
+        editing or sharing the metadata in Excel format. Use --template to
+        write into the full MIHCSME template instead.
         """
         try:
             console.print(
@@ -206,7 +224,10 @@ if CLI_AVAILABLE:
             console.print(
                 f"[bold blue]Writing to Excel:[/bold blue] {output}"
             )
-            write_metadata_to_excel(metadata, output)
+            if template or template_file:
+                fill_template(metadata, output, template_path=template_file)
+            else:
+                write_metadata_to_excel(metadata, output)
 
             console.print(
                 f"[bold green]✓[/bold green] Successfully converted to "

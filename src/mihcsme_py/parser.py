@@ -162,6 +162,11 @@ def _parse_key_value_sheet(xls: pd.ExcelFile, sheet_name: str) -> dict:
             if group not in sheet_data:
                 sheet_data[group] = {}
 
+            # The template repeats the collaborator key once per collaborator;
+            # number them so later rows don't overwrite earlier ones
+            if group == "DataCollaborator":
+                key = f"{key}_{len(sheet_data[group])}"
+
             # Add the key-value pair to the group
             # Convert NaN to None for cleaner JSON
             sheet_data[group][key] = None if pd.isna(value) else value

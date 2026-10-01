@@ -96,6 +96,9 @@ mihcsme upload metadata.xlsx \
 
 # Convert JSON to Excel
 mihcsme to-excel metadata.json --output metadata.xlsx
+
+# Export into the full MIHCSME template (all fields, descriptions, dropdowns)
+mihcsme to-excel metadata.json --template --output metadata.xlsx
 ```
 
 ## Data Flow
