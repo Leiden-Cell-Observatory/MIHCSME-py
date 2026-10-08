@@ -19,7 +19,7 @@ from mihcsme_py.uploader import (
     upload_metadata_to_omero,
     validate_metadata_against_omero,
 )
-from mihcsme_py.writer import write_metadata_to_excel
+from mihcsme_py.writer import fill_template, write_metadata_to_excel
 
 __all__ = [
     "__version__",
@@ -36,5 +36,6 @@ __all__ = [
     "upload_metadata_to_omero",
     "validate_metadata_against_omero",
     "download_metadata_from_omero",
+    "fill_template",
     "write_metadata_to_excel",
 ]

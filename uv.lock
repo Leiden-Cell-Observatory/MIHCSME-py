@@ -1321,14 +1321,12 @@ wheels = [
 
 [[package]]
 name = "mihcsme-py"
-version = "0.1.0"
+version = "0.1.4"
 source = { editable = "." }
 dependencies = [
-    { name = "omero-py" },
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "pydantic" },
-    { name = "zeroc-ice" },
 ]
 
 [package.optional-dependencies]
@@ -1365,6 +1363,9 @@ llm = [
     { name = "llm", version = "0.27.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "llm", version = "0.28", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
 ]
+omero = [
+    { name = "omero-py" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1378,7 +1379,7 @@ requires-dist = [
     { name = "mkdocs-section-index", marker = "extra == 'docs'", specifier = ">=0.3.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
-    { name = "omero-py", specifier = ">=5.19.0" },
+    { name = "omero-py", marker = "extra == 'omero'", specifier = ">=5.19.0" },
     { name = "openpyxl", specifier = ">=3.1.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
@@ -1389,9 +1390,8 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "typer", marker = "extra == 'all'", specifier = ">=0.9.0" },
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.9.0" },
-    { name = "zeroc-ice", specifier = ">=3.6.5" },
 ]
-provides-extras = ["cli", "llm", "dev", "docs", "all"]
+provides-extras = ["omero", "cli", "llm", "dev", "docs", "all"]
 
 [[package]]
 name = "mkdocs"

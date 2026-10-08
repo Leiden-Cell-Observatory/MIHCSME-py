@@ -216,10 +216,12 @@ class InvestigationInformation(BaseModel):
                 if "ORCID" in key and value:
                     data_collaborators.append(DataCollaborator(orcid=value))
 
-        # Parse InvestigationInfo (note: group name is "InvestigationInfo", not "InvestigationInformation")
+        # Parse InvestigationInfo (model uses "InvestigationInfo"; the Excel template
+        # uses "InvestigationInformation")
         investigation_info = None
-        if "InvestigationInfo" in groups:
-            investigation_info = InvestigationInfo(**groups["InvestigationInfo"])
+        info_group = groups.get("InvestigationInfo") or groups.get("InvestigationInformation")
+        if info_group:
+            investigation_info = InvestigationInfo(**info_group)
 
         return cls(
             data_owner=data_owner,

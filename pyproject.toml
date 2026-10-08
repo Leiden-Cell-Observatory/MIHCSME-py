@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build>=0.6.0,<0.7"]
+requires = ["uv_build>=0.12.21,<0.13"]
 build-backend = "uv_build"
 
 [project]
@@ -91,7 +91,7 @@ Issues = "https://github.com/Leiden-Cell-Observatory/MIHCSME-py/issues"
 [project.scripts]
 mihcsme = "mihcsme_py.cli:app"
 
-[tool.uv_build]
+[tool.uv.build-backend]
 module-name = "mihcsme_py"
 
 [tool.pytest.ini_options]
