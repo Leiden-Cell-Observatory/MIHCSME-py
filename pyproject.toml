@@ -57,6 +57,12 @@ llm = [
     "llm>=0.19",          # Multi-provider LLM library
 ]
 
+# Interactive marimo app (plate editor widget)
+app = [
+    "anywidget>=0.9; python_version >= '3.10'",
+    "marimo>=0.19.6; python_version >= '3.10'",
+]
+
 # Development tools
 dev = [
     "pytest>=7.0.0",
@@ -103,6 +109,9 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--cov=mihcsme_py",
+]
+markers = [
+    "slow: browser-based smoke tests (deselect with '-m \"not slow\"')",
 ]
 
 [tool.black]
