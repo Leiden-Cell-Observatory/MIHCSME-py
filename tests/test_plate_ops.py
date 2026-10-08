@@ -127,3 +127,43 @@ class TestDetailPayload:
         df = _df()
         df.loc[0, "Dose"] = None
         assert plate_ops.detail_payload(df, "P1")["A01"] == {"Treatment": "DMSO"}
+
+
+class TestPlateStatus:
+    def _validation(self, **kw):
+        base = {
+            "valid": True,
+            "errors": [],
+            "warnings": [],
+            "plates": {"in_metadata_not_omero": [], "in_omero_not_metadata": []},
+            "wells": {},
+            "omero_plates": ["P1", "P2"],
+        }
+        base.update(kw)
+        return base
+
+    def test_all_matched(self):
+        status = plate_ops.plate_status(_df(), self._validation())
+        row = status.set_index("Plate").loc["P1"]
+        assert bool(row["In design"]) and bool(row["In OMERO"])
+        assert row["Wells in design"] == 3
+        assert row["Wells matched"] == 3
+        assert row["Missing in OMERO"] == 0
+
+    def test_missing_wells_and_extra_plate(self):
+        validation = self._validation(
+            omero_plates=["P1", "P2", "P3"],
+            wells={"P1": {"in_metadata_not_omero": ["B01"], "in_omero_not_metadata": ["H12", "H11"]}},
+        )
+        status = plate_ops.plate_status(_df(), validation).set_index("Plate")
+        assert status.loc["P1", "Wells matched"] == 2
+        assert status.loc["P1", "Missing in OMERO"] == 1
+        assert status.loc["P1", "Extra in OMERO"] == 2
+        assert not bool(status.loc["P3", "In design"])
+        assert bool(status.loc["P3", "In OMERO"])
+
+    def test_plate_status_target_missing(self):
+        validation = self._validation(valid=False, errors=["Screen with ID 9 not found"], omero_plates=[])
+        status = plate_ops.plate_status(_df(), validation)
+        assert not status["In OMERO"].any()
+        assert (status["Wells matched"] == 0).all()

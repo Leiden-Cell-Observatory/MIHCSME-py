@@ -117,3 +117,37 @@ def detail_payload(df: pd.DataFrame, plate: str) -> Dict[str, Dict[str, str]]:
             continue
         detail[name] = {f: str(record[f]) for f in fields if not _is_missing(record[f])}
     return detail
+
+
+def plate_status(df: pd.DataFrame, validation: Dict[str, Any]) -> pd.DataFrame:
+    """Per-plate overview of how the design matches OMERO.
+
+    Args:
+        df: Well dataframe of the design.
+        validation: Result of ``validate_metadata_against_omero``.
+    """
+    design_wells: Dict[str, set] = {}
+    if not df.empty:
+        for plate, well in zip(df["Plate"].astype(str), df["Well"]):
+            name = normalize_well(well)
+            if name:
+                design_wells.setdefault(plate, set()).add(name)
+    omero_plates = set(validation.get("omero_plates", []))
+    rows = []
+    for plate in sorted(set(design_wells) | omero_plates):
+        info = validation.get("wells", {}).get(plate, {})
+        n_design = len(design_wells.get(plate, ()))
+        in_omero = plate in omero_plates
+        missing = len(info.get("in_metadata_not_omero", [])) if in_omero else n_design
+        rows.append(
+            {
+                "Plate": plate,
+                "In design": plate in design_wells,
+                "In OMERO": in_omero,
+                "Wells in design": n_design,
+                "Wells matched": n_design - missing,
+                "Missing in OMERO": missing,
+                "Extra in OMERO": len(info.get("in_omero_not_metadata", [])),
+            }
+        )
+    return pd.DataFrame(rows)
