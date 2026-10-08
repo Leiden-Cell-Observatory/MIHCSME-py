@@ -833,6 +833,9 @@
 </span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
 </span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="c1"># Convert JSON to Excel</span>
 </span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>mihcsme<span class="w"> </span>to-excel<span class="w"> </span>metadata.json<span class="w"> </span>--output<span class="w"> </span>metadata.xlsx
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="c1"># Export into the full MIHCSME template (all fields, descriptions, dropdowns)</span>
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>mihcsme<span class="w"> </span>to-excel<span class="w"> </span>metadata.json<span class="w"> </span>--template<span class="w"> </span>--output<span class="w"> </span>metadata.xlsx
 </span></code></pre></div>
 <h2 id="data-flow">Data Flow<a class="headerlink" href="#data-flow" title="Permanent link">#</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Excel (.xlsx) ←→ Pydantic Model ←→ JSON (.json)
