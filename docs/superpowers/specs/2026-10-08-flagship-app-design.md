@@ -44,7 +44,7 @@ examples/marimo/
 - `pyproject.toml`: new optional extra `app = ["anywidget", "marimo"]`. Core dependencies unchanged.
 - Flagship script header depends on `mihcsme-py[app,omero]` from git `main` (fixes the dead `rev = "marimo_app"` pin). LLM packages optional; the LLM panel only shows when `llm` imports.
 - Deleted: `marimo_omero_app.py`, `marimo_template_app.py`, `marimo_omero_example.py`, `mihcsme_omero_upload.py`, empty top-level `examples/marimo_omero_app.py`, `examples/marimo/__marimo__/`, `__pycache__/`, xlsx files under `examples/`.
-- Sample data: the app's "Load example" button and `01` use the bundled `mihcsme_py/templates/LEI-MIHCSME.xlsx`.
+- Sample data: the bundled LEI template has no wells, so a copy of `MIHCSME Template_example.xlsx` is bundled as `mihcsme_py/templates/MIHCSME_example.xlsx`; the app pre-fills it as the default file and `01` uses it.
 - Untouched: `examples/jupyter`, `examples/R`, untracked `examples/marimo/marimo_bia.py` (unrelated, contains credentials — must never be committed).
 - README: molab badge -> `examples/marimo/mihcsme_app.py`; short examples table.
 
@@ -103,7 +103,7 @@ Keep the Investigation / Study / Assay tabs. Replace hand-written field cells wi
 ## 5. OMERO tab
 
 - Same flow as today: connect, choose Screen/Plate + ID, validate, upload.
-- New: per-plate status table built from `validate_metadata_against_omero` result: plate, in design, in OMERO, wells matched, wells missing.
+- New: `validate_metadata_against_omero` also returns `omero_plates`; per-plate status table built from the result: plate, in design, in OMERO, wells matched, wells missing.
 - Tab shown only if `omero` is importable; otherwise a short note on how to install `mihcsme-py[omero]`. Rest of the app works offline.
 
 ## 6. Testing
@@ -116,5 +116,5 @@ Keep the Investigation / Study / Assay tabs. Replace hand-written field cells wi
 ## Error handling
 
 - Excel parse errors: shown in the Load tab as a danger callout with the parser message (as today).
-- Widget missing (`anywidget` not installed): app shows install hint instead of the editor; table view still works.
-- OMERO connection/validation failures: danger callout with the message; upload button disabled until validation passes.
+- Widget dependencies: the app's script header, `requirements.txt` and Docker image always install `mihcsme-py[app]`; importing `mihcsme_py.widgets` without them raises an ImportError with the install command.
+- OMERO connection/validation failures: danger callout with the message; upload keeps the existing strict validation that refuses mismatched plates/wells.
