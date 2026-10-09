@@ -771,12 +771,14 @@ def _(mo):
 
 
 @app.cell
-def _(import_file, parse_excel_to_model):
-    # Only Investigation/Study/Assay information is used; the plate layout is ignored
+def _(get_dismissed_import, import_file, parse_excel_to_model):
+    # Only Investigation/Study/Assay information is used; the plate layout is ignored.
+    # Dismissal is checked here, not in the cell that owns the Dismiss button:
+    # marimo does not re-run a cell for state it set itself.
     imported_metadata = None
     imported_name = None
     import_error = None
-    if import_file.value:
+    if import_file.value and get_dismissed_import() != import_file.name():
         imported_name = import_file.name()
         try:
             imported_metadata = parse_excel_to_model(import_file.contents())
@@ -794,7 +796,6 @@ def _(
     assay_form,
     form_errors,
     form_to_model,
-    get_dismissed_import,
     get_section_overrides,
     imported_metadata,
     imported_name,
@@ -812,7 +813,7 @@ def _(
         "assay_information": (AssayInformation, assay_form),
     }
     section_suggestions = {}
-    if imported_metadata is not None and get_dismissed_import() != imported_name:
+    if imported_metadata is not None:
         for _key, (_cls, _form) in _sections.items():
             _found = suggest_values(_form.value, model_values(_cls, getattr(imported_metadata, _key)))
             if _found:
