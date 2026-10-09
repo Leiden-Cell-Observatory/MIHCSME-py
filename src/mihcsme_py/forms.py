@@ -77,7 +77,7 @@ def render_form(form, model_cls: Type[BaseModel]):
             scalars.append(form[name])
     parts: List[Any] = list(scalars)
     if sections:
-        parts.append(mo.accordion(sections, multiple=True))
+        parts.append(mo.accordion(sections, multiple=True, expanded=list(sections)[:1]))
     return mo.vstack(parts, gap=0.5)
 
 

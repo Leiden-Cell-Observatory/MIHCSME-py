@@ -126,6 +126,7 @@ def _(ENABLE_LLM_FEATURES):
         write_metadata_to_excel,
     )
     from mihcsme_py.omero_connection import connect as omero_connect
+    from mihcsme_py.forms import form_to_model, model_form, render_form
     from mihcsme_py.widgets import PlateViewer
 
     from importlib.resources import files as _resource_files
@@ -163,57 +164,26 @@ def _(ENABLE_LLM_FEATURES):
     )
 
     return (
-        Assay,
-        AssayComponent,
         AssayInformation,
-        Biosample,
-        BiosampleAssay,
-        Channel,
-        DataCollaborator,
-        DataOwner,
         EXAMPLE_FILE,
-        ImageAcquisition,
-        ImageData,
-        InvestigationInfo,
         InvestigationInformation,
-        Library,
         MIHCSMEMetadataLLM,
         Path,
-        Plate,
         PlateViewer,
-        Protocols,
-        Specimen,
-        Study,
         StudyInformation,
         download_metadata_from_omero,
+        form_to_model,
         io,
         mo,
+        model_form,
         omero_connect,
         parse_excel_to_model,
         pd,
+        render_form,
         upload_metadata_to_omero,
         validate_metadata_against_omero,
         write_metadata_to_excel,
     )
-
-
-@app.function(hide_code=True)
-def create_pydantic_form(mo, model_class, instance=None):
-    form_fields = {}
-    for field_name, field_info in model_class.model_fields.items():
-        alias = field_info.alias or field_name
-        description = field_info.description or ""
-        current_value = getattr(instance, field_name, None) if instance else None
-
-        if current_value is None:
-            current_value = ""
-
-        form_fields[field_name] = mo.ui.text(
-            value=str(current_value),
-            label=alias,
-            placeholder=description[:50] if description else "",
-        )
-    return form_fields
 
 
 @app.cell(hide_code=True)
@@ -698,14 +668,6 @@ def _(get_wells, mo, set_wells):
     return (wells_table,)
 
 
-@app.cell
-def _(get_wells, metadata):
-    metadata_updated = (
-        metadata.update_conditions_from_dataframe(get_wells()) if metadata is not None else None
-    )
-    return (metadata_updated,)
-
-
 @app.cell(hide_code=True)
 def _(metadata, mo, plate_viewer_ui, wells_table):
     if metadata is None:
@@ -731,706 +693,100 @@ def _(metadata, mo, plate_viewer_ui, wells_table):
     return (wells_tab_content,)
 
 
-@app.cell(hide_code=True)
-def _(DataOwner, InvestigationInfo, metadata, mo):
-    if metadata is None:
-        inv_data_owner_fields = None
-        inv_investigation_info_fields = None
-        inv_collaborators_array = None
-        inv_investigation_forms = None
-    else:
-        # Data Owner form
-        _current_data_owner = (
-            metadata.investigation_information.data_owner
-            if metadata.investigation_information
-            else None
-        )
-        inv_data_owner_fields = create_pydantic_form(mo, DataOwner, _current_data_owner)
-
-        _inv_data_owner_form = mo.vstack(
-            [
-                mo.md("**Data Owner Information**"),
-                inv_data_owner_fields["first_name"],
-                inv_data_owner_fields["middle_names"],
-                inv_data_owner_fields["last_name"],
-                inv_data_owner_fields["user_name"],
-                inv_data_owner_fields["institute"],
-                inv_data_owner_fields["email"],
-                inv_data_owner_fields["orcid"],
-            ]
-        )
-
-        # Investigation Info form
-        _current_investigation_info = (
-            metadata.investigation_information.investigation_info
-            if metadata.investigation_information
-            else None
-        )
-        inv_investigation_info_fields = create_pydantic_form(
-            mo, InvestigationInfo, _current_investigation_info
-        )
-
-        _inv_investigation_info_form = mo.vstack(
-            [
-                mo.md("**Investigation Information**"),
-                inv_investigation_info_fields["project_id"],
-                inv_investigation_info_fields["investigation_title"],
-                inv_investigation_info_fields["investigation_internal_id"],
-                inv_investigation_info_fields["investigation_description"],
-            ]
-        )
-
-        # Data Collaborators array
-        _current_collaborators = (
-            metadata.investigation_information.data_collaborators
-            if metadata.investigation_information
-            else []
-        )
-        # Create initial array elements from existing collaborators
-        _initial_collab_elements = [
-            mo.ui.text(
-                label=f"ORCID Collaborator",
-                placeholder="https://orcid.org/0000-0000-0000-0000",
-                value=collab.orcid or "",
-            )
-            for collab in _current_collaborators
-        ] or [
-            mo.ui.text(
-                label="ORCID Collaborator",
-                placeholder="https://orcid.org/0000-0000-0000-0000",
-            )
-        ]
-
-        inv_collaborators_array = mo.ui.array(
-            _initial_collab_elements, label="Data Collaborators (add/remove as needed)"
-        )
-
-        _inv_collaborators_form = mo.vstack(
-            [mo.md("**Data Collaborators**"), inv_collaborators_array]
-        )
-
-        # Combine into tabs
-        inv_investigation_forms = mo.ui.tabs(
-            {
-                "Data Owner": _inv_data_owner_form,
-                "Investigation Info": _inv_investigation_info_form,
-                "Collaborators": _inv_collaborators_form,
-            }
-        ).form(label="Update Investigation Information", bordered=True)
-    return (
-        inv_collaborators_array,
-        inv_data_owner_fields,
-        inv_investigation_forms,
-        inv_investigation_info_fields,
-    )
-
-
 @app.cell
 def _(
-    DataCollaborator,
-    DataOwner,
-    InvestigationInfo,
-    inv_collaborators_array,
-    inv_data_owner_fields,
-    inv_investigation_forms,
-    inv_investigation_info_fields,
-):
-    inv_updated_data_owner = None
-    inv_updated_investigation_info = None
-    inv_updated_collaborators = []
-
-    if inv_investigation_forms is not None and inv_investigation_forms.value:
-        inv_updated_data_owner = DataOwner(
-            first_name=inv_data_owner_fields["first_name"].value or None,
-            middle_names=inv_data_owner_fields["middle_names"].value or None,
-            last_name=inv_data_owner_fields["last_name"].value or None,
-            user_name=inv_data_owner_fields["user_name"].value or None,
-            institute=inv_data_owner_fields["institute"].value or None,
-            email=inv_data_owner_fields["email"].value or None,
-            orcid=inv_data_owner_fields["orcid"].value or None,
-        )
-
-        inv_updated_investigation_info = InvestigationInfo(
-            project_id=inv_investigation_info_fields["project_id"].value or None,
-            investigation_title=inv_investigation_info_fields["investigation_title"].value or None,
-            investigation_internal_id=inv_investigation_info_fields[
-                "investigation_internal_id"
-            ].value
-            or None,
-            investigation_description=inv_investigation_info_fields[
-                "investigation_description"
-            ].value
-            or None,
-        )
-
-        # Process collaborators array
-        inv_updated_collaborators = [
-            DataCollaborator(orcid=item.value or None)
-            for item in inv_collaborators_array.value
-            if item.value and item.value.strip()
-        ]
-    return (
-        inv_updated_collaborators,
-        inv_updated_data_owner,
-        inv_updated_investigation_info,
-    )
-
-
-@app.cell
-def _(Biosample, Library, Plate, Protocols, Study, metadata, mo):
-    """Create Study Information forms."""
-    if metadata is None:
-        study_fields = None
-        biosample_fields = None
-        library_fields = None
-        protocols_fields = None
-        plate_fields = None
-        study_forms = None
-    else:
-        # Study form
-        _current_study = metadata.study_information.study if metadata.study_information else None
-        study_fields = create_pydantic_form(mo, Study, _current_study)
-        _study_form = mo.vstack(
-            [
-                mo.md("**Study Information**"),
-                study_fields["study_title"],
-                study_fields["study_internal_id"],
-                study_fields["study_description"],
-                study_fields["study_key_words"],
-            ]
-        )
-
-        # Biosample form
-        _current_biosample = (
-            metadata.study_information.biosample if metadata.study_information else None
-        )
-        biosample_fields = create_pydantic_form(mo, Biosample, _current_biosample)
-        _biosample_form = mo.vstack(
-            [
-                mo.md("**Biosample Information**"),
-                biosample_fields["biosample_taxon"],
-                biosample_fields["biosample_description"],
-                biosample_fields["biosample_organism"],
-                biosample_fields["number_of_cell_lines_used"],
-            ]
-        )
-
-        # Library form
-        _current_library = (
-            metadata.study_information.library if metadata.study_information else None
-        )
-        library_fields = create_pydantic_form(mo, Library, _current_library)
-        _library_form = mo.vstack(
-            [
-                mo.md("**Library Information**"),
-                library_fields["library_file_name"],
-                library_fields["library_file_format"],
-                library_fields["library_type"],
-                library_fields["library_manufacturer"],
-                library_fields["library_version"],
-                library_fields["library_experimental_conditions"],
-                library_fields["quality_control_description"],
-            ]
-        )
-
-        # Protocols form
-        _current_protocols = (
-            metadata.study_information.protocols if metadata.study_information else None
-        )
-        protocols_fields = create_pydantic_form(mo, Protocols, _current_protocols)
-        _protocols_form = mo.vstack(
-            [
-                mo.md("**Protocols**"),
-                protocols_fields["hcs_library_protocol"],
-                protocols_fields["growth_protocol"],
-                protocols_fields["treatment_protocol"],
-                protocols_fields["hcs_data_analysis_protocol"],
-            ]
-        )
-
-        # Plate form
-        _current_plate = metadata.study_information.plate if metadata.study_information else None
-        plate_fields = create_pydantic_form(mo, Plate, _current_plate)
-        _plate_form = mo.vstack(
-            [
-                mo.md("**Plate Information**"),
-                plate_fields["plate_type"],
-                plate_fields["plate_type_manufacturer"],
-                plate_fields["plate_type_catalog_number"],
-            ]
-        )
-
-        # Combine into tabs
-        study_forms = mo.ui.tabs(
-            {
-                "Study": _study_form,
-                "Biosample": _biosample_form,
-                "Library": _library_form,
-                "Protocols": _protocols_form,
-                "Plate": _plate_form,
-            }
-        ).form(label="Update Study Information", bordered=True)
-    return (
-        biosample_fields,
-        library_fields,
-        plate_fields,
-        protocols_fields,
-        study_fields,
-        study_forms,
-    )
-
-
-@app.cell
-def _(
-    Biosample,
-    Library,
-    Plate,
-    Protocols,
-    Study,
-    biosample_fields,
-    library_fields,
-    plate_fields,
-    protocols_fields,
-    study_fields,
-    study_forms,
-):
-    """Process Study Information form submission."""
-    study_updated_study = None
-    study_updated_biosample = None
-    study_updated_library = None
-    study_updated_protocols = None
-    study_updated_plate = None
-
-    if study_forms is not None and study_forms.value:
-        study_updated_study = Study(
-            study_title=study_fields["study_title"].value or None,
-            study_internal_id=study_fields["study_internal_id"].value or None,
-            study_description=study_fields["study_description"].value or None,
-            study_key_words=study_fields["study_key_words"].value or None,
-        )
-
-        study_updated_biosample = Biosample(
-            biosample_taxon=biosample_fields["biosample_taxon"].value or None,
-            biosample_description=biosample_fields["biosample_description"].value or None,
-            biosample_organism=biosample_fields["biosample_organism"].value or None,
-            number_of_cell_lines_used=biosample_fields["number_of_cell_lines_used"].value or None,
-        )
-
-        study_updated_library = Library(
-            library_file_name=library_fields["library_file_name"].value or None,
-            library_file_format=library_fields["library_file_format"].value or None,
-            library_type=library_fields["library_type"].value or None,
-            library_manufacturer=library_fields["library_manufacturer"].value or None,
-            library_version=library_fields["library_version"].value or None,
-            library_experimental_conditions=library_fields["library_experimental_conditions"].value
-            or None,
-            quality_control_description=library_fields["quality_control_description"].value or None,
-        )
-
-        study_updated_protocols = Protocols(
-            hcs_library_protocol=protocols_fields["hcs_library_protocol"].value or None,
-            growth_protocol=protocols_fields["growth_protocol"].value or None,
-            treatment_protocol=protocols_fields["treatment_protocol"].value or None,
-            hcs_data_analysis_protocol=protocols_fields["hcs_data_analysis_protocol"].value or None,
-        )
-
-        study_updated_plate = Plate(
-            plate_type=plate_fields["plate_type"].value or None,
-            plate_type_manufacturer=plate_fields["plate_type_manufacturer"].value or None,
-            plate_type_catalog_number=plate_fields["plate_type_catalog_number"].value or None,
-        )
-    return (
-        study_updated_biosample,
-        study_updated_library,
-        study_updated_plate,
-        study_updated_protocols,
-        study_updated_study,
-    )
-
-
-@app.cell
-def _(
-    Assay,
-    AssayComponent,
-    BiosampleAssay,
-    ImageAcquisition,
-    ImageData,
+    AssayInformation,
+    InvestigationInformation,
+    StudyInformation,
     metadata,
-    mo,
+    model_form,
 ):
-    """Create Assay Information forms."""
-    if metadata is None:
-        assay_fields = None
-        assay_component_fields = None
-        biosample_assay_fields = None
-        image_data_fields = None
-        image_acquisition_fields = None
-        specimen_channel_transmission_field = None
-        specimen_channel_dicts = None
-        assay_forms = None
-    else:
-        # Assay form
-        _current_assay = metadata.assay_information.assay if metadata.assay_information else None
-        assay_fields = create_pydantic_form(mo, Assay, _current_assay)
-        _assay_form = mo.vstack(
-            [
-                mo.md("**Assay Information**"),
-                assay_fields["assay_title"],
-                assay_fields["assay_internal_id"],
-                assay_fields["assay_description"],
-                assay_fields["assay_number_of_biological_replicates"],
-                assay_fields["number_of_plates"],
-                assay_fields["assay_technology_type"],
-                assay_fields["assay_type"],
-                assay_fields["assay_external_url"],
-                assay_fields["assay_data_url"],
-            ]
-        )
-
-        # AssayComponent form
-        _current_assay_component = (
-            metadata.assay_information.assay_component if metadata.assay_information else None
-        )
-        assay_component_fields = create_pydantic_form(mo, AssayComponent, _current_assay_component)
-        _assay_component_form = mo.vstack(
-            [
-                mo.md("**Assay Component**"),
-                assay_component_fields["imaging_protocol"],
-                assay_component_fields["sample_preparation_protocol"],
-            ]
-        )
-
-        # BiosampleAssay form
-        _current_biosample_assay = (
-            metadata.assay_information.biosample if metadata.assay_information else None
-        )
-        biosample_assay_fields = create_pydantic_form(mo, BiosampleAssay, _current_biosample_assay)
-        _biosample_assay_form = mo.vstack(
-            [
-                mo.md("**Biosample (Assay)**"),
-                biosample_assay_fields["cell_lines_storage_location"],
-                biosample_assay_fields["cell_lines_clone_number"],
-                biosample_assay_fields["cell_lines_passage_number"],
-            ]
-        )
-
-        # ImageData form
-        _current_image_data = (
-            metadata.assay_information.image_data if metadata.assay_information else None
-        )
-        image_data_fields = create_pydantic_form(mo, ImageData, _current_image_data)
-        _image_data_form = mo.vstack(
-            [
-                mo.md("**Image Data**"),
-                image_data_fields["image_number_of_pixelsx"],
-                image_data_fields["image_number_of_pixelsy"],
-                image_data_fields["image_number_of_z_stacks"],
-                image_data_fields["image_number_of_channels"],
-                image_data_fields["image_number_of_timepoints"],
-                image_data_fields["image_sites_per_well"],
-            ]
-        )
-
-        # ImageAcquisition form
-        _current_image_acquisition = (
-            metadata.assay_information.image_acquisition if metadata.assay_information else None
-        )
-        image_acquisition_fields = create_pydantic_form(
-            mo, ImageAcquisition, _current_image_acquisition
-        )
-        _image_acquisition_form = mo.vstack(
-            [
-                mo.md("**Image Acquisition**"),
-                image_acquisition_fields["microscope_id"],
-            ]
-        )
-
-        # Specimen form (special handling for channels)
-        _current_specimen = (
-            metadata.assay_information.specimen if metadata.assay_information else None
-        )
-
-        specimen_channel_transmission_field = mo.ui.text(
-            label="Channel Transmission ID",
-            value=_current_specimen.channel_transmission_id or "" if _current_specimen else "",
-            placeholder="Channel id dependent on different machines",
-        )
-
-        # Create channel forms - simplified approach using dictionaries
-        _existing_channels = _current_specimen.channels if _current_specimen else []
-
-        def _create_channel_dict(channel=None):
-            return {
-                "visualization_method": mo.ui.text(
-                    label="Visualization Method",
-                    value=channel.visualization_method or "" if channel else "",
-                    placeholder="e.g., Hoechst staining, GFP",
-                ),
-                "entity": mo.ui.text(
-                    label="Entity",
-                    value=channel.entity or "" if channel else "",
-                    placeholder="e.g., DNA, MAP1LC3B",
-                ),
-                "label": mo.ui.text(
-                    label="Label",
-                    value=channel.label or "" if channel else "",
-                    placeholder="e.g., Nuclei, GFP-LC3",
-                ),
-                "id": mo.ui.text(
-                    label="ID",
-                    value=channel.id or "" if channel else "",
-                    placeholder="Channel order in image",
-                ),
-            }
-
-        # Create up to 8 channel forms (fixed slots for simplicity)
-        _specimen_channel_forms = []
-        for i in range(8):
-            ch = _existing_channels[i] if i < len(_existing_channels) else None
-            _ch_dict = _create_channel_dict(ch)
-
-            # Create a form for this channel
-            _ch_form = mo.vstack(
-                [
-                    mo.md(f"**Channel {i + 1}**"),
-                    _ch_dict["visualization_method"],
-                    _ch_dict["entity"],
-                    _ch_dict["label"],
-                    _ch_dict["id"],
-                ]
-            )
-            _specimen_channel_forms.append((i, _ch_dict, _ch_form))
-
-        # Store the channel dictionaries for later access
-        specimen_channel_dicts = [item[1] for item in _specimen_channel_forms]
-
-        # Create accordion for channels
-        _channels_accordion = mo.accordion(
-            {f"Channel {i + 1}": item[2] for i, item in enumerate(_specimen_channel_forms)}
-        )
-
-        _specimen_form = mo.vstack(
-            [
-                mo.md("**Specimen/Channels**"),
-                specimen_channel_transmission_field,
-                mo.md("*Fluorescence Channels (expand to edit):*"),
-                _channels_accordion,
-            ]
-        )
-
-        # Combine into tabs
-        assay_forms = mo.ui.tabs(
-            {
-                "Assay": _assay_form,
-                "Assay Component": _assay_component_form,
-                "Biosample": _biosample_assay_form,
-                "Image Data": _image_data_form,
-                "Image Acquisition": _image_acquisition_form,
-                "Specimen": _specimen_form,
-            }
-        ).form(label="Update Assay Information", bordered=True)
-    return (
-        assay_component_fields,
-        assay_fields,
-        assay_forms,
-        biosample_assay_fields,
-        image_acquisition_fields,
-        image_data_fields,
-        specimen_channel_dicts,
-        specimen_channel_transmission_field,
+    investigation_form = model_form(
+        InvestigationInformation, metadata.investigation_information if metadata else None
     )
+    study_form = model_form(StudyInformation, metadata.study_information if metadata else None)
+    assay_form = model_form(AssayInformation, metadata.assay_information if metadata else None)
+    return assay_form, investigation_form, study_form
 
 
 @app.cell
 def _(
-    Assay,
-    AssayComponent,
-    BiosampleAssay,
-    Channel,
-    ImageAcquisition,
-    ImageData,
-    Specimen,
-    assay_component_fields,
-    assay_fields,
-    assay_forms,
-    biosample_assay_fields,
-    image_acquisition_fields,
-    image_data_fields,
-    specimen_channel_dicts,
-    specimen_channel_transmission_field,
+    AssayInformation,
+    InvestigationInformation,
+    StudyInformation,
+    assay_form,
+    form_to_model,
+    get_wells,
+    investigation_form,
+    metadata,
+    study_form,
 ):
-    """Process Assay Information form submission."""
-    assay_updated_assay = None
-    assay_updated_assay_component = None
-    assay_updated_biosample_assay = None
-    assay_updated_image_data = None
-    assay_updated_image_acquisition = None
-    assay_updated_specimen = None
-
-    if assay_forms is not None and assay_forms.value:
-        assay_updated_assay = Assay(
-            assay_title=assay_fields["assay_title"].value or None,
-            assay_internal_id=assay_fields["assay_internal_id"].value or None,
-            assay_description=assay_fields["assay_description"].value or None,
-            assay_number_of_biological_replicates=assay_fields[
-                "assay_number_of_biological_replicates"
-            ].value
-            or None,
-            number_of_plates=assay_fields["number_of_plates"].value or None,
-            assay_technology_type=assay_fields["assay_technology_type"].value or None,
-            assay_type=assay_fields["assay_type"].value or None,
-            assay_external_url=assay_fields["assay_external_url"].value or None,
-            assay_data_url=assay_fields["assay_data_url"].value or None,
+    # Combine edited wells and edited sections; invalid sections keep the loaded values
+    form_errors = {}
+    metadata_updated = None
+    if metadata is not None:
+        _sections = {}
+        for _key, _cls, _form in [
+            ("investigation_information", InvestigationInformation, investigation_form),
+            ("study_information", StudyInformation, study_form),
+            ("assay_information", AssayInformation, assay_form),
+        ]:
+            _model, _error = form_to_model(_cls, _form.value)
+            if _error:
+                form_errors[_key] = _error
+            else:
+                _sections[_key] = _model
+        metadata_updated = metadata.update_conditions_from_dataframe(get_wells()).model_copy(
+            update=_sections
         )
-
-        assay_updated_assay_component = AssayComponent(
-            imaging_protocol=assay_component_fields["imaging_protocol"].value or None,
-            sample_preparation_protocol=assay_component_fields["sample_preparation_protocol"].value
-            or None,
-        )
-
-        assay_updated_biosample_assay = BiosampleAssay(
-            cell_lines_storage_location=biosample_assay_fields["cell_lines_storage_location"].value
-            or None,
-            cell_lines_clone_number=biosample_assay_fields["cell_lines_clone_number"].value or None,
-            cell_lines_passage_number=biosample_assay_fields["cell_lines_passage_number"].value
-            or None,
-        )
-
-        assay_updated_image_data = ImageData(
-            image_number_of_pixelsx=image_data_fields["image_number_of_pixelsx"].value or None,
-            image_number_of_pixelsy=image_data_fields["image_number_of_pixelsy"].value or None,
-            image_number_of_z_stacks=image_data_fields["image_number_of_z_stacks"].value or None,
-            image_number_of_channels=image_data_fields["image_number_of_channels"].value or None,
-            image_number_of_timepoints=image_data_fields["image_number_of_timepoints"].value
-            or None,
-            image_sites_per_well=image_data_fields["image_sites_per_well"].value or None,
-        )
-
-        assay_updated_image_acquisition = ImageAcquisition(
-            microscope_id=image_acquisition_fields["microscope_id"].value or None,
-        )
-
-        # Process channels from the 8 channel dictionaries
-        _processed_channels = []
-        if specimen_channel_dicts is not None:
-            for _channel_dict in specimen_channel_dicts:
-                _vis_method = _channel_dict["visualization_method"].value or None
-                _entity = _channel_dict["entity"].value or None
-                _label = _channel_dict["label"].value or None
-                _ch_id = _channel_dict["id"].value or None
-
-                # Only add channel if it has any data
-                if any([_vis_method, _entity, _label, _ch_id]):
-                    _processed_channels.append(
-                        Channel(
-                            visualization_method=_vis_method,
-                            entity=_entity,
-                            label=_label,
-                            id=_ch_id,
-                        )
-                    )
-
-        assay_updated_specimen = Specimen(
-            channel_transmission_id=specimen_channel_transmission_field.value or None,
-            channels=_processed_channels,
-        )
-    return (
-        assay_updated_assay,
-        assay_updated_assay_component,
-        assay_updated_biosample_assay,
-        assay_updated_image_acquisition,
-        assay_updated_image_data,
-        assay_updated_specimen,
-    )
+    return form_errors, metadata_updated
 
 
 @app.cell(hide_code=True)
 def _(
-    assay_forms,
-    inv_investigation_forms,
-    inv_updated_collaborators,
-    inv_updated_data_owner,
-    inv_updated_investigation_info,
+    AssayInformation,
+    InvestigationInformation,
+    StudyInformation,
+    assay_form,
+    form_errors,
+    investigation_form,
     metadata,
     mo,
-    study_forms,
+    render_form,
+    study_form,
 ):
-    """Build metadata tab content with nested tabs."""
+    def _section(key, form, cls):
+        _error = form_errors.get(key)
+        _parts = [render_form(form, cls)]
+        if _error:
+            _parts.insert(
+                0,
+                mo.callout(
+                    mo.md(f"**Not saved — fix these fields:**\n\n```\n{_error}\n```"),
+                    kind="danger",
+                ),
+            )
+        return mo.vstack(_parts)
+
     if metadata is None:
         metadata_tab_content = mo.callout(
             mo.md("**Please load a template first** in the Load Template tab."), kind="warn"
         )
     else:
-        # Build Investigation sub-tab content
-        if inv_updated_data_owner is not None and inv_updated_investigation_info is not None:
-            _inv_result = mo.accordion(
-                {
-                    "Updated Data Owner": mo.plain(inv_updated_data_owner),
-                    "Updated Investigation Info": mo.plain(inv_updated_investigation_info),
-                    "Updated Collaborators": mo.plain(inv_updated_collaborators),
-                }
-            )
-        else:
-            _inv_result = mo.md("*Submit the form to see updated values*")
-
-        _investigation_tab_content = mo.vstack(
-            [
-                mo.md("""
-            **Investigation-level metadata** (who, what, why)
-
-            Fill in data owner, investigation details, and collaborators.
-            """),
-                inv_investigation_forms,
-                _inv_result,
-            ],
-            gap=2,
-        )
-
-        # Build Study sub-tab content
-        _study_tab_content = mo.vstack(
-            [
-                mo.md("""
-            **Study-level metadata**
-
-            Details about the study, biosample, library, protocols, and plate configuration.
-            """),
-                study_forms if study_forms is not None else mo.md("*Forms not loaded*"),
-            ],
-            gap=2,
-        )
-
-        # Build Assay sub-tab content
-        _assay_tab_content = mo.vstack(
-            [
-                mo.md("""
-            **Assay-level metadata**
-
-            Assay details, imaging protocols, image data, and specimen/channel information.
-            """),
-                assay_forms if assay_forms is not None else mo.md("*Forms not loaded*"),
-            ],
-            gap=2,
-        )
-
-        # Create nested tabs structure
-        _metadata_nested_tabs = mo.ui.tabs(
-            {
-                "Investigation": _investigation_tab_content,
-                "Study": _study_tab_content,
-                "Assay": _assay_tab_content,
-            }
-        )
-
-        # Assemble the Metadata tab content
         metadata_tab_content = mo.vstack(
             [
-                mo.md("""
-            ### Edit Metadata
-
-            Edit all levels of MIHCSME metadata organized by Investigation, Study, and Assay.
-            """),
-                _metadata_nested_tabs,
+                mo.md(
+                    "### Metadata\n\nChanges are applied as you type and used by Export and OMERO upload."
+                ),
+                mo.ui.tabs(
+                    {
+                        "Investigation": _section(
+                            "investigation_information", investigation_form, InvestigationInformation
+                        ),
+                        "Study": _section("study_information", study_form, StudyInformation),
+                        "Assay": _section("assay_information", assay_form, AssayInformation),
+                    }
+                ),
             ],
             gap=2,
         )
@@ -1448,73 +804,18 @@ def _(mo):
 
 @app.cell
 def _(
-    AssayInformation,
-    InvestigationInformation,
-    StudyInformation,
-    assay_updated_assay,
-    assay_updated_assay_component,
-    assay_updated_biosample_assay,
-    assay_updated_image_acquisition,
-    assay_updated_image_data,
-    assay_updated_specimen,
     export_button,
     export_filename,
-    inv_updated_collaborators,
-    inv_updated_data_owner,
-    inv_updated_investigation_info,
     io,
     metadata_updated,
     mo,
-    study_updated_biosample,
-    study_updated_library,
-    study_updated_plate,
-    study_updated_protocols,
-    study_updated_study,
     write_metadata_to_excel,
 ):
     export_result = None
     download_button = None
     if export_button.value:
         try:
-            _final_metadata = metadata_updated.model_copy(deep=True)
-
-            try:
-                # Update Investigation Information
-                if (
-                    inv_updated_data_owner is not None
-                    and inv_updated_investigation_info is not None
-                ):
-                    _updated_investigation_information = InvestigationInformation(
-                        data_owner=inv_updated_data_owner,
-                        investigation_info=inv_updated_investigation_info,
-                        data_collaborators=inv_updated_collaborators,
-                    )
-                    _final_metadata.investigation_information = _updated_investigation_information
-
-                # Update Study Information
-                if study_updated_study is not None:
-                    _updated_study_information = StudyInformation(
-                        study=study_updated_study,
-                        biosample=study_updated_biosample,
-                        library=study_updated_library,
-                        protocols=study_updated_protocols,
-                        plate=study_updated_plate,
-                    )
-                    _final_metadata.study_information = _updated_study_information
-
-                # Update Assay Information
-                if assay_updated_assay is not None:
-                    _updated_assay_information = AssayInformation(
-                        assay=assay_updated_assay,
-                        assay_component=assay_updated_assay_component,
-                        biosample=assay_updated_biosample_assay,
-                        image_data=assay_updated_image_data,
-                        image_acquisition=assay_updated_image_acquisition,
-                        specimen=assay_updated_specimen,
-                    )
-                    _final_metadata.assay_information = _updated_assay_information
-            except NameError:
-                pass
+            _final_metadata = metadata_updated
 
             # Write to BytesIO buffer for download
             _buffer = io.BytesIO()
@@ -1838,19 +1139,7 @@ def _(mo):
 
 @app.cell
 def _(
-    AssayInformation,
-    InvestigationInformation,
-    StudyInformation,
-    assay_updated_assay,
-    assay_updated_assay_component,
-    assay_updated_biosample_assay,
-    assay_updated_image_acquisition,
-    assay_updated_image_data,
-    assay_updated_specimen,
     get_omero_conn,
-    inv_updated_collaborators,
-    inv_updated_data_owner,
-    inv_updated_investigation_info,
     metadata_updated,
     mo,
     omero_upload_button,
@@ -1858,11 +1147,6 @@ def _(
     omero_upload_strict,
     omero_upload_target_id,
     omero_upload_target_type,
-    study_updated_biosample,
-    study_updated_library,
-    study_updated_plate,
-    study_updated_protocols,
-    study_updated_study,
     upload_metadata_to_omero,
 ):
     def _build_validation_detail_md(validation):
@@ -1891,47 +1175,7 @@ def _(
         else:
             try:
                 # Build final metadata with any form updates
-                _final_metadata = metadata_updated.model_copy(deep=True)
-
-                try:
-                    # Update Investigation Information
-                    if (
-                        inv_updated_data_owner is not None
-                        and inv_updated_investigation_info is not None
-                    ):
-                        _updated_investigation_information = InvestigationInformation(
-                            data_owner=inv_updated_data_owner,
-                            investigation_info=inv_updated_investigation_info,
-                            data_collaborators=inv_updated_collaborators,
-                        )
-                        _final_metadata.investigation_information = (
-                            _updated_investigation_information
-                        )
-
-                    # Update Study Information
-                    if study_updated_study is not None:
-                        _updated_study_information = StudyInformation(
-                            study=study_updated_study,
-                            biosample=study_updated_biosample,
-                            library=study_updated_library,
-                            protocols=study_updated_protocols,
-                            plate=study_updated_plate,
-                        )
-                        _final_metadata.study_information = _updated_study_information
-
-                    # Update Assay Information
-                    if assay_updated_assay is not None:
-                        _updated_assay_information = AssayInformation(
-                            assay=assay_updated_assay,
-                            assay_component=assay_updated_assay_component,
-                            biosample=assay_updated_biosample_assay,
-                            image_data=assay_updated_image_data,
-                            image_acquisition=assay_updated_image_acquisition,
-                            specimen=assay_updated_specimen,
-                        )
-                        _final_metadata.assay_information = _updated_assay_information
-                except NameError:
-                    pass
+                _final_metadata = metadata_updated
 
                 # Upload to OMERO
                 _result = upload_metadata_to_omero(
