@@ -55,8 +55,8 @@ def test_plate_editor_renders(app_url):
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(app_url)
-        page.get_by_role("tab", name="Edit Wells").click(timeout=60000)
-        circles = page.locator(".pv svg circle")
+        page.get_by_role("tab", name="Plate layout").click(timeout=60000)
+        circles = page.locator(".pv svg circle.pv-well")
         circles.first.wait_for(timeout=60000)
         assert circles.count() in (96, 384)
         assert errors == []

@@ -16,7 +16,7 @@
 import marimo
 
 __generated_with = "0.25.0"
-app = marimo.App(width="full", app_title="MIHCSME OMERO App")
+app = marimo.App(width="full", app_title="MIHCSME Editor")
 
 
 @app.cell(hide_code=True)
@@ -35,9 +35,9 @@ def _(
     # Create the main tabbed interface
     main_tabs = mo.ui.tabs(
         {
-            "1. Load Template": load_tab_content,
-            "2. Edit Wells": wells_tab_content,
-            "3. Edit Metadata": metadata_tab_content,
+            "1. Load": load_tab_content,
+            "2. Plate layout": wells_tab_content,
+            "3. Metadata": metadata_tab_content,
             "4. Export": export_tab_content,
             "5. OMERO": omero_tab_content
             if OMERO_AVAILABLE
@@ -58,9 +58,9 @@ def _(
     mo.vstack(
         [
             mo.md("""
-        # MIHCSME Metadata Editor + OMERO
+        # MIHCSME Editor
 
-        *Create, edit, and sync metadata templates for high-content screening microscopy experiments with OMERO*
+        *Plate layouts and screen metadata, from Excel to OMERO.*
         """),
             status_bar,
             mo.md("---"),
@@ -74,7 +74,7 @@ def _(
 @app.cell
 def _(mo):
     # Remember the active tab so edits (which rebuild tab content) don't jump back to tab 1
-    get_active_tab, set_active_tab = mo.state("1. Load Template")
+    get_active_tab, set_active_tab = mo.state("1. Load")
     return get_active_tab, set_active_tab
 
 
@@ -217,7 +217,7 @@ def _(ENABLE_LLM_FEATURES, mo):
     file_source = mo.ui.radio(
         options=_options,
         value="File Path",
-        label="How do you want to load/create the metadata?",
+        label="Source",
     )
     return (file_source,)
 
@@ -227,12 +227,12 @@ def _(EXAMPLE_FILE, file_source, mo):
     if file_source.value == "File Path":
         path_input = mo.ui.text(
             value=EXAMPLE_FILE,
-            label="Excel file path (pre-filled with the bundled example):",
+            label="Excel file (default: bundled example)",
             full_width=True,
         )
         file_upload = None
     elif file_source.value == "Upload File":
-        file_upload = mo.ui.file(label="Upload Excel file:", filetypes=[".xlsx"])
+        file_upload = mo.ui.file(label="Excel file", filetypes=[".xlsx"])
         path_input = None
     else:
         # LLM mode - no file input needed here
@@ -568,7 +568,7 @@ def _(
         # Success state
         _num_conditions = len(metadata.assay_conditions) if metadata.assay_conditions else 0
         _load_status = mo.callout(
-            mo.md(f"**Template loaded successfully!** ({_num_conditions} well conditions found)"),
+            mo.md(f"**Loaded:** {_num_conditions} wells."),
             kind="success",
         )
     else:
@@ -576,7 +576,7 @@ def _(
         if file_source.value == "File Path":
             _load_status = mo.callout(
                 mo.md(
-                    "**Ready to load.** Enter a file path above and the template will load automatically."
+                    "Enter a file path; it loads automatically."
                 ),
                 kind="info",
             )
@@ -589,13 +589,13 @@ def _(
             ):
                 _load_status = mo.callout(
                     mo.md(
-                        "**Waiting for file upload.** Click the upload button above to select an Excel file."
+                        "Choose an .xlsx file to upload."
                     ),
                     kind="info",
                 )
             else:
                 _load_status = mo.callout(
-                    mo.md("**Ready to upload.** Use the file uploader above."), kind="info"
+                    mo.md("Choose an .xlsx file to upload."), kind="info"
                 )
 
     # Build the input element based on mode
@@ -618,25 +618,20 @@ def _(
 
     # Fallback if somehow input is None (shouldn't happen but prevents blank screen)
     if _file_input is None:
-        _file_input = mo.md("*Please select an input method above*")
+        _file_input = mo.md("*Choose a source above.*")
 
     # Build help text based on whether LLM features are enabled
     if ENABLE_LLM_FEATURES:
         _help_text = """
-        ### Load Template
+        ### Load
 
-        Choose how to load your MIHCSME metadata:
-        - **File Path**: Specify a path to an existing Excel file
-        - **Upload File**: Upload an Excel file from your computer
-        - **Generate with LLM**: Use AI to extract metadata from lab notes
+        Start from a MIHCSME Excel file, or draft metadata from lab notes with an LLM.
         """
     else:
         _help_text = """
-        ### Load Template
+        ### Load
 
-        Choose how to load your MIHCSME metadata:
-        - **File Path**: Specify a path to an existing Excel file
-        - **Upload File**: Upload an Excel file from your computer
+        Start from a MIHCSME Excel file.
         """
 
     # Assemble the Load tab content
@@ -687,7 +682,7 @@ def _(get_wells, mo, set_wells):
 def _(form_errors, metadata, mo, plate_viewer, wells_table):
     if metadata is None:
         wells_tab_content = mo.callout(
-            mo.md("**Please load a template first** in the Load Template tab."), kind="warn"
+            mo.md("Load a template first (tab 1)."), kind="warn"
         )
     else:
         # Wrapped here (not in its own cell) so selection changes don't re-run any cell
@@ -699,8 +694,8 @@ def _(form_errors, metadata, mo, plate_viewer, wells_table):
                     """
                     ### Plate layout
 
-                    Check your design at a glance. Select wells (drag, row/column headers,
-                    legend entries; Shift adds, Esc clears), then set a value in the edit panel.
+                    Select wells (drag, row/column headers or legend; Shift adds, Esc clears),
+                    then set a value.
                     """
                 ),
                 mo.callout(
@@ -709,7 +704,7 @@ def _(form_errors, metadata, mo, plate_viewer, wells_table):
                 if _wells_error
                 else mo.md(""),
                 _plate_viewer_ui,
-                mo.accordion({"Table view (bulk edit / copy-paste)": wells_table}),
+                mo.accordion({"Table (bulk edit)": wells_table}),
             ],
             gap=2,
         )
@@ -785,13 +780,13 @@ def _(
 
     if metadata is None:
         metadata_tab_content = mo.callout(
-            mo.md("**Please load a template first** in the Load Template tab."), kind="warn"
+            mo.md("Load a template first (tab 1)."), kind="warn"
         )
     else:
         metadata_tab_content = mo.vstack(
             [
                 mo.md(
-                    "### Metadata\n\nChanges are applied as you type and used by Export and OMERO upload."
+                    "### Metadata\n\nEdits apply as you type."
                 ),
                 mo.ui.tabs(
                     {
@@ -811,7 +806,7 @@ def _(
 @app.cell
 def _(mo):
     export_filename = mo.ui.text(
-        value="MIHCSME_export.xlsx", label="Output filename:", full_width=True
+        value="MIHCSME_export.xlsx", label="File name", full_width=True
     )
     export_button = mo.ui.run_button(label="Export to Excel")
     return export_button, export_filename
@@ -834,7 +829,7 @@ def _(
             mo.md(
                 "**Not exported:** fix the errors first ("
                 + ", ".join(sorted(form_errors))
-                + ") in the Edit Wells / Edit Metadata tabs."
+                + ") in the Plate layout / Metadata tabs."
             ),
             kind="danger",
         )
@@ -852,11 +847,11 @@ def _(
                 data=_buffer.getvalue(),
                 filename=export_filename.value,
                 mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                label="⬇ Download Excel file",
+                label="Download",
             )
 
             export_result = mo.callout(
-                mo.md("**Export ready!** Click the button below to download."),
+                mo.md("**Ready.** Download below."),
                 kind="success",
             )
         except Exception as e:
@@ -876,7 +871,7 @@ def _(
 ):
     if metadata is None:
         export_tab_content = mo.callout(
-            mo.md("**Please load a template first** in the Load Template tab."), kind="warn"
+            mo.md("Load a template first (tab 1)."), kind="warn"
         )
     else:
         # Build summary
@@ -911,13 +906,12 @@ def _(
         export_tab_content = mo.vstack(
             [
                 mo.md("""
-            ### Review & Export
+            ### Export
 
-            Save your completed metadata template to Excel format.
+            Download the metadata as a MIHCSME Excel file.
             """),
                 _summary,
                 mo.md("---"),
-                mo.md("**Export Settings**"),
                 _export_controls,
                 _download_section,
             ],
@@ -931,29 +925,29 @@ def _(mo):
     # OMERO Connection UI Components
     omero_host = mo.ui.text(
         value="omero.example.com",
-        label="OMERO Host:",
+        label="Host",
         full_width=True,
     )
     omero_user = mo.ui.text(
         value="",
-        label="Username:",
+        label="User",
         full_width=True,
     )
     omero_password = mo.ui.text(
         value="",
-        label="Password:",
+        label="Password",
         kind="password",
         full_width=True,
     )
     omero_port = mo.ui.number(
         value=4064,
-        label="Port:",
+        label="Port",
         start=1,
         stop=65535,
     )
     omero_group = mo.ui.text(
         value="",
-        label="Group (optional):",
+        label="Group (optional)",
         full_width=True,
         placeholder="Leave empty for default group",
     )
@@ -1050,7 +1044,7 @@ def _(
         omero_connection_display = mo.callout(mo.md("**Disconnected from OMERO**"), kind="info")
     else:
         omero_connection_display = mo.callout(
-            mo.md("**Not connected.** Enter credentials and click Connect."), kind="info"
+            mo.md("Not connected."), kind="info"
         )
     return (omero_connection_display,)
 
@@ -1061,14 +1055,14 @@ def _(mo):
     omero_download_target_type = mo.ui.dropdown(
         options=["Screen", "Plate"],
         value="Screen",
-        label="Target Type:",
+        label="Target",
     )
     omero_download_target_id = mo.ui.number(
         value=1,
-        label="Target ID:",
+        label="ID",
         start=1,
     )
-    omero_download_button = mo.ui.run_button(label="Download Metadata from OMERO")
+    omero_download_button = mo.ui.run_button(label="Download")
     return (
         omero_download_button,
         omero_download_target_id,
@@ -1135,23 +1129,23 @@ def _(mo):
     omero_upload_target_type = mo.ui.dropdown(
         options=["Screen", "Plate"],
         value="Screen",
-        label="Target Type:",
+        label="Target",
     )
     omero_upload_target_id = mo.ui.number(
         value=1,
-        label="Target ID:",
+        label="ID",
         start=1,
     )
     omero_upload_replace = mo.ui.checkbox(
         value=False,
-        label="Replace existing annotations (removes old MIHCSME annotations first)",
+        label="Replace existing MIHCSME annotations",
     )
     omero_upload_strict = mo.ui.checkbox(
         value=True,
-        label="Strict validation (block upload on mismatches)",
+        label="Block upload on plate/well mismatches",
     )
-    omero_upload_button = mo.ui.run_button(label="Upload Metadata to OMERO")
-    omero_validate_button = mo.ui.run_button(label="Validate Metadata (dry run)")
+    omero_upload_button = mo.ui.run_button(label="Upload")
+    omero_validate_button = mo.ui.run_button(label="Validate (dry run)")
     return (
         omero_upload_button,
         omero_upload_replace,
@@ -1202,7 +1196,7 @@ def _(
             omero_upload_error = (
                 "Fix the errors first ("
                 + ", ".join(sorted(form_errors))
-                + ") in the Edit Wells / Edit Metadata tabs."
+                + ") in the Plate layout / Metadata tabs."
             )
         else:
             try:
@@ -1383,10 +1377,7 @@ def _(
     _download_section = mo.vstack(
         [
             mo.md("""
-            **Download metadata from OMERO**
-
-            Load existing MIHCSME metadata from a Screen or Plate in OMERO.
-            The downloaded metadata will be available for editing in the other tabs.
+            Load MIHCSME metadata from a Screen or Plate into this app.
             """),
             mo.hstack([omero_download_target_type, omero_download_target_id], gap=2),
             omero_download_button,
@@ -1399,11 +1390,8 @@ def _(
     _upload_section = mo.vstack(
         [
             mo.md("""
-            **Upload metadata to OMERO**
-
-            Push your current metadata to a Screen or Plate in OMERO.
-            This will create MapAnnotations on the target object and its wells.
-            Use **Validate** to check plate/well matching before uploading.
+            Add the metadata as key-value annotations to a Screen or Plate and its wells.
+            Validate first to check plate and well names.
             """),
             mo.hstack([omero_upload_target_type, omero_upload_target_id], gap=2),
             omero_upload_replace,
@@ -1427,9 +1415,9 @@ def _(
     omero_tab_content = mo.vstack(
         [
             mo.md("""
-            ### OMERO Integration
+            ### OMERO
 
-            Connect to an OMERO server to download or upload MIHCSME metadata.
+            Connect, then download or upload metadata.
             """),
             mo.md("---"),
             _connection_form,
@@ -1437,7 +1425,7 @@ def _(
             _omero_subtabs
             if _is_connected
             else mo.callout(
-                mo.md("**Connect to OMERO** to access download and upload features."),
+                mo.md("Connect to download or upload."),
                 kind="info",
             ),
         ],

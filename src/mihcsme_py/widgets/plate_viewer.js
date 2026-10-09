@@ -4,9 +4,8 @@ const PALETTE = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948
 const NS = "http://www.w3.org/2000/svg";
 const CSS = `
 .pv { font-family: system-ui, sans-serif; user-select: none; font-size: 12px;
-  --pv-unset: #ffffff; --pv-line: #9aa0a6; --pv-sel: #111; --pv-hover: rgba(127,127,127,.15); }
-@media (prefers-color-scheme: dark) { .pv { --pv-unset: #2a2a2a; --pv-line: #666; --pv-sel: #fff; } }
-:host-context(.dark) .pv, .dark .pv { --pv-unset: #2a2a2a; --pv-line: #666; --pv-sel: #fff; }
+  --pv-unset: #ffffff; --pv-line: #9aa0a6; --pv-sel: #111; --pv-ring: #1a73e8; --pv-hover: rgba(127,127,127,.15); }
+.pv.pv-dark { --pv-unset: #2a2a2a; --pv-line: #666; --pv-sel: #fff; --pv-ring: #8ab4f8; }
 .pv-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
 .pv-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .pv-thumb { font-size: 10px; text-align: center; cursor: pointer; }
@@ -38,6 +37,7 @@ const CSS = `
 const wellName = (r, c) => String.fromCharCode(65 + r) + String(c + 1).padStart(2, "0");
 const dims = (fmt) => (fmt === "384" ? [16, 24] : [8, 12]);
 const isUnset = (v) => v === null || v === undefined || v === "";
+const fmt = (n) => String(Number(n.toPrecision(3)));
 const gradColor = (t) => `hsl(${220 - 200 * t} 70% ${85 - 45 * t}%)`;
 
 function buildScale(model) {
@@ -71,6 +71,14 @@ function render({ model, el }) {
   style.textContent = CSS;
   const root = document.createElement("div");
   root.className = "pv";
+  const syncTheme = () => {
+    const body = document.body;
+    const dark = body.dataset.theme === "dark" || body.classList.contains("dark") || body.classList.contains("dark-theme");
+    root.classList.toggle("pv-dark", dark);
+  };
+  syncTheme();
+  const themeObserver = new MutationObserver(syncTheme);
+  themeObserver.observe(document.body, { attributes: true, attributeFilter: ["class", "data-theme"] });
   root.innerHTML = `
     <div class="pv-bar">
       <label>Colour by <select data-ref="colorBy"></select></label>
@@ -110,11 +118,7 @@ function render({ model, el }) {
   }
 
   function paintSelection() {
-    for (const { node, name, empty } of cells) {
-      const on = selected.has(name);
-      node.setAttribute("stroke", on ? "var(--pv-sel)" : empty ? "var(--pv-line)" : "none");
-      node.setAttribute("stroke-width", on ? 2.5 : 1);
-    }
+    for (const { ring, name } of cells) ring.style.display = selected.has(name) ? "" : "none";
     const n = selected.size;
     $("selInfo").textContent = `${n} well${n === 1 ? "" : "s"} selected on ${model.get("current_plate")}`;
     $("apply").textContent = `Apply to ${n} well${n === 1 ? "" : "s"}`;
@@ -185,9 +189,22 @@ function render({ model, el }) {
         const node = document.createElementNS(NS, "circle");
         node.setAttribute("cx", pad + c * s + s / 2);
         node.setAttribute("cy", pad + r * s + s / 2);
-        node.setAttribute("r", s / 2 - 2);
+        node.setAttribute("r", s / 2 - 5);
+        node.setAttribute("class", "pv-well");
         node.setAttribute("fill", empty ? "var(--pv-unset)" : scale.color(v));
-        if (empty) node.setAttribute("stroke-dasharray", "2 2");
+        if (empty) {
+          node.setAttribute("stroke", "var(--pv-line)");
+          node.setAttribute("stroke-dasharray", "2 2");
+        }
+        const ring = document.createElementNS(NS, "circle");
+        ring.setAttribute("cx", pad + c * s + s / 2);
+        ring.setAttribute("cy", pad + r * s + s / 2);
+        ring.setAttribute("r", s / 2 - 2);
+        ring.setAttribute("fill", "none");
+        ring.setAttribute("stroke", "var(--pv-ring)");
+        ring.setAttribute("stroke-width", 3);
+        ring.style.pointerEvents = "none";
+        ring.style.display = "none";
         node.style.cursor = "pointer";
         node.addEventListener("mousedown", (e) => {
           drag = { r, c, base: e.shiftKey ? new Set(selected) : new Set() };
@@ -215,8 +232,8 @@ function render({ model, el }) {
           tip.style.top = `${e.clientY + 14}px`;
         });
         node.addEventListener("mouseleave", () => { tip.style.display = "none"; });
-        svg.append(node);
-        cells.push({ node, name, value: v, empty });
+        svg.append(node, ring);
+        cells.push({ node, ring, name, value: v, empty });
       }
     }
     $("plate").replaceChildren(svg);
@@ -230,7 +247,7 @@ function render({ model, el }) {
       const stops = [0, 0.25, 0.5, 0.75, 1].map(gradColor).join(",");
       legend.innerHTML = `<div data-ref="gradTitle"></div>
         <div class="pv-grad" style="background:linear-gradient(90deg,${stops})"></div>
-        <div style="display:flex;justify-content:space-between"><span>${scale.lo}</span><span>${scale.hi}</span></div>${unsetRow}`;
+        <div style="display:flex;justify-content:space-between"><span>${fmt(scale.lo)}</span><span>${fmt(scale.hi)}</span></div>${unsetRow}`;
       legend.querySelector('[data-ref="gradTitle"]').textContent = `${model.get("color_field")} (log scale)`;
     } else {
       const rows = [...scale.counts].sort((a, b) => b[1] - a[1]);
@@ -348,7 +365,10 @@ function render({ model, el }) {
     paintSelection();
   });
   redraw();
-  return () => controller.abort();
+  return () => {
+    controller.abort();
+    themeObserver.disconnect();
+  };
 }
 
 export default { render };
