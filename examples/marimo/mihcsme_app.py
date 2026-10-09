@@ -4,28 +4,30 @@
 #     "llm==0.28",
 #     "llm-openrouter==0.5",
 #     "marimo>=0.19.6",
-#     "mihcsme-py",
+#     "mihcsme-py[app,omero]",
 #     "zeroc-ice",
 # ]
 #
 # [tool.uv.sources]
 # zeroc-ice = { url = "https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-cp312-cp312-manylinux_2_28_x86_64.whl" }
-# mihcsme-py = { git = "https://github.com/Leiden-Cell-Observatory/MIHCSME-py.git", rev = "marimo_app" }
+# mihcsme-py = { git = "https://github.com/Leiden-Cell-Observatory/MIHCSME-py.git", rev = "main" }
 # ///
 
 import marimo
 
-__generated_with = "0.19.4"
+__generated_with = "0.25.0"
 app = marimo.App(width="full", app_title="MIHCSME OMERO App")
 
 
 @app.cell(hide_code=True)
 def _(
     export_tab_content,
+    get_active_tab,
     load_tab_content,
     metadata_tab_content,
     mo,
     omero_tab_content,
+    set_active_tab,
     status_bar,
     wells_tab_content,
 ):
@@ -37,7 +39,9 @@ def _(
             "3. Edit Metadata": metadata_tab_content,
             "4. Export": export_tab_content,
             "5. OMERO": omero_tab_content,
-        }
+        },
+        value=get_active_tab(),
+        on_change=set_active_tab,
     )
 
     # Assemble the main layout
@@ -55,6 +59,13 @@ def _(
         gap=1,
     )
     return
+
+
+@app.cell
+def _(mo):
+    # Remember the active tab so edits (which rebuild tab content) don't jump back to tab 1
+    get_active_tab, set_active_tab = mo.state("1. Load Template")
+    return get_active_tab, set_active_tab
 
 
 @app.cell
@@ -115,6 +126,11 @@ def _(ENABLE_LLM_FEATURES):
         write_metadata_to_excel,
     )
     from mihcsme_py.omero_connection import connect as omero_connect
+    from mihcsme_py.widgets import PlateViewer
+
+    from importlib.resources import files as _resource_files
+
+    EXAMPLE_FILE = str(_resource_files("mihcsme_py") / "templates" / "MIHCSME_example.xlsx")
 
     # Only import LLM class if LLM features are enabled
     if ENABLE_LLM_FEATURES:
@@ -145,6 +161,7 @@ def _(ENABLE_LLM_FEATURES):
         Study,
         StudyInformation,
     )
+
     return (
         Assay,
         AssayComponent,
@@ -154,6 +171,7 @@ def _(ENABLE_LLM_FEATURES):
         Channel,
         DataCollaborator,
         DataOwner,
+        EXAMPLE_FILE,
         ImageAcquisition,
         ImageData,
         InvestigationInfo,
@@ -162,6 +180,7 @@ def _(ENABLE_LLM_FEATURES):
         MIHCSMEMetadataLLM,
         Path,
         Plate,
+        PlateViewer,
         Protocols,
         Specimen,
         Study,
@@ -176,100 +195,6 @@ def _(ENABLE_LLM_FEATURES):
         validate_metadata_against_omero,
         write_metadata_to_excel,
     )
-
-
-@app.cell(hide_code=True)
-def _(pd):
-    def visualize_plate(df, column_to_display, plate_name=None, plate_format="96"):
-        """
-        Visualize a dataframe as a well plate layout.
-
-        Args:
-            df: DataFrame with 'Plate', 'Well' columns and data columns
-            column_to_display: Name of the column to show in each well
-            plate_name: Optional plate name to filter by (if None, uses first plate)
-            plate_format: "96" for 96-well (8x12) or "384" for 384-well (16x24)
-
-        Returns:
-            HTML string with plate visualization
-        """
-        # Define plate dimensions based on format
-        if plate_format == "96":
-            max_rows = 8  # A-H
-            max_cols = 12  # 1-12
-        else:  # 384-well
-            max_rows = 16  # A-P
-            max_cols = 24  # 1-24
-
-        # Create full row and column ranges
-        row_letters = [chr(65 + i) for i in range(max_rows)]  # A, B, C, ...
-        col_numbers = list(range(1, max_cols + 1))
-
-        # Filter by plate if specified
-        if plate_name:
-            plate_df = df[df["Plate"] == plate_name].copy()
-        else:
-            # Use first plate if not specified
-            plate_name = df["Plate"].iloc[0] if len(df) > 0 else "Unknown"
-            plate_df = df[df["Plate"] == plate_name].copy()
-
-        # Parse well positions (e.g., "A01" -> row="A", col=1)
-        def parse_well(well_str):
-            row = well_str[0]  # Letter (A-P)
-            col = int(well_str[1:])  # Number (1-48)
-            return row, col
-
-        # Create lookup dictionary for data
-        well_data_dict = {}
-        if len(plate_df) > 0:
-            plate_df["row"] = plate_df["Well"].apply(lambda w: parse_well(w)[0])
-            plate_df["col"] = plate_df["Well"].apply(lambda w: parse_well(w)[1])
-
-            for _, row_data in plate_df.iterrows():
-                key = (row_data["row"], row_data["col"])
-                well_data_dict[key] = row_data[column_to_display]
-
-        # Create HTML table
-        html = f"<h3>Plate: {plate_name} - {column_to_display} ({plate_format}-well)</h3>"
-        html += (
-            "<table style='border-collapse: collapse; font-family: monospace; font-size: 10px;'>"
-        )
-
-        # Header row (column numbers)
-        html += "<tr><th style='border: 1px solid #ddd; padding: 4px; background: #f0f0f0; font-size: 9px;'></th>"
-        for col in col_numbers:
-            html += f"<th style='border: 1px solid #ddd; padding: 4px; background: #f0f0f0; font-size: 9px;'>{col}</th>"
-        html += "</tr>"
-
-        # Data rows - always show full grid
-        for row_letter in row_letters:
-            html += f"<tr><th style='border: 1px solid #ddd; padding: 4px; background: #f0f0f0; font-size: 9px;'>{row_letter}</th>"
-            for col_num in col_numbers:
-                # Look up data for this well
-                key = (row_letter, col_num)
-                if key in well_data_dict:
-                    value = well_data_dict[key]
-                    # Format value
-                    if pd.isna(value):
-                        display_value = "-"
-                        bg_color = "#f9f9f9"
-                    else:
-                        display_value = str(value)
-                        # Truncate long values
-                        if len(display_value) > 10:
-                            display_value = display_value[:8] + ".."
-                        bg_color = "#e3f2fd"  # Light blue for data
-                else:
-                    # Empty well (no data)
-                    display_value = ""
-                    bg_color = "#ffffff"
-
-                html += f"<td style='border: 1px solid #ddd; padding: 4px; background: {bg_color}; text-align: center; min-width: 40px; font-size: 9px;'>{display_value}</td>"
-            html += "</tr>"
-
-        html += "</table>"
-        return html
-    return (visualize_plate,)
 
 
 @app.function(hide_code=True)
@@ -307,10 +232,12 @@ def _(ENABLE_LLM_FEATURES, mo):
 
 
 @app.cell
-def _(file_source, mo):
+def _(EXAMPLE_FILE, file_source, mo):
     if file_source.value == "File Path":
         path_input = mo.ui.text(
-            value="MIHCSME Template_example.xlsx", label="Excel file path:", full_width=True
+            value=EXAMPLE_FILE,
+            label="Excel file path (pre-filled with the bundled example):",
+            full_width=True,
         )
         file_upload = None
     elif file_source.value == "Upload File":
@@ -735,118 +662,69 @@ def _(
 
 
 @app.cell
-def _(metadata):
-    # Don't stop - just return None for df when metadata is None
-    # This allows downstream cells to check and handle the None case
-    df = None
-    if metadata is not None:
-        df = metadata.to_dataframe()
-    return (df,)
-
-
-@app.cell(hide_code=True)
-def _(df, mo):
-    # Create default controls even when df is None
-    # This prevents "ancestor stopped" errors in downstream cells
-
-    if df is not None:
-        # Get available columns (excluding Plate and Well)
-        data_columns = [col for col in df.columns if col not in ["Plate", "Well"]]
-
-        # Get unique plates
-        plates = df["Plate"].unique().tolist() if len(df) > 0 else []
-    else:
-        # No data yet - create empty controls
-        data_columns = []
-        plates = []
-
-    # Create interactive controls (they work even with empty options)
-    column_select = mo.ui.dropdown(
-        options=data_columns,
-        value=data_columns[0] if data_columns else None,
-        label="Column to display:",
+def _(metadata, mo, pd):
+    # Well dataframe is app state: plate editor and table both write to it
+    get_wells, set_wells = mo.state(
+        metadata.to_dataframe() if metadata is not None else pd.DataFrame()
     )
-
-    plate_select = mo.ui.dropdown(
-        options=plates, value=plates[0] if plates else None, label="Plate:"
-    )
-
-    format_select = mo.ui.dropdown(options=["96", "384"], value="96", label="Plate format:")
-    return column_select, format_select, plate_select
+    return get_wells, set_wells
 
 
 @app.cell
-def _(df, mo, pd):
-    # Create editor even when df is None - use empty dataframe as placeholder
-    if df is not None:
-        editor = mo.ui.data_editor(df)
-    else:
-        # Create empty editor as placeholder
-        editor = mo.ui.data_editor(pd.DataFrame())
-    return (editor,)
+def _(PlateViewer, metadata, set_wells):
+    # Created once per loaded template; edits flow back via on_change -> set_wells
+    plate_viewer = PlateViewer()
+    plate_viewer.on_change(set_wells)
+    _ = metadata
+    return (plate_viewer,)
 
 
 @app.cell
-def _(editor, metadata, pd):
-    # Handle case when metadata is None
-    if metadata is not None:
-        metadata_updated = metadata.update_conditions_from_dataframe(editor.value)
-        df_updated = metadata_updated.to_dataframe()
-    else:
-        # No metadata yet - use empty values
-        metadata_updated = None
-        df_updated = pd.DataFrame()
-    return df_updated, metadata_updated
+def _(get_wells, plate_viewer):
+    # Push data to the widget; does not depend on the selection (performance rule)
+    plate_viewer.set_data(get_wells())
+    return
+
+
+@app.cell
+def _(mo, plate_viewer):
+    plate_viewer_ui = mo.ui.anywidget(plate_viewer)
+    return (plate_viewer_ui,)
+
+
+@app.cell
+def _(get_wells, mo, set_wells):
+    wells_table = mo.ui.data_editor(get_wells(), on_change=set_wells)
+    return (wells_table,)
+
+
+@app.cell
+def _(get_wells, metadata):
+    metadata_updated = (
+        metadata.update_conditions_from_dataframe(get_wells()) if metadata is not None else None
+    )
+    return (metadata_updated,)
 
 
 @app.cell(hide_code=True)
-def _(
-    column_select,
-    df_updated,
-    editor,
-    format_select,
-    metadata,
-    mo,
-    plate_select,
-    visualize_plate,
-):
+def _(metadata, mo, plate_viewer_ui, wells_table):
     if metadata is None:
         wells_tab_content = mo.callout(
             mo.md("**Please load a template first** in the Load Template tab."), kind="warn"
         )
     else:
-        # Build controls row
-        _controls = mo.hstack([plate_select, column_select, format_select], gap=2)
-
-        # Build plate visualization
-        if column_select.value and plate_select.value:
-            _plate_html = visualize_plate(
-                df_updated, column_select.value, plate_select.value, format_select.value
-            )
-            _plate_viz = mo.Html(_plate_html)
-        else:
-            _plate_viz = mo.md("Select a column and plate to visualize")
-
-        # Assemble the Wells tab content
         wells_tab_content = mo.vstack(
             [
-                mo.md("""
-            ### Edit Plates & Wells
+                mo.md(
+                    """
+                    ### Plate layout
 
-            View and modify well-level metadata across your plates.
-
-            **Instructions:**
-            1. Use the dropdowns to select which plate and column to visualize
-            2. Edit data directly in the table below
-            3. The plate visualization updates automatically
-            """),
-                mo.md("---"),
-                mo.md("**Visualization Controls**"),
-                _controls,
-                _plate_viz,
-                mo.md("---"),
-                mo.md("**Data Editor** - Edit well metadata directly:"),
-                editor,
+                    Check your design at a glance. Select wells (drag, row/column headers,
+                    legend entries; Shift adds, Esc clears), then set a value in the edit panel.
+                    """
+                ),
+                plate_viewer_ui,
+                mo.accordion({"Table view (bulk edit / copy-paste)": wells_table}),
             ],
             gap=2,
         )

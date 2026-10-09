@@ -62,16 +62,28 @@ def apply_edit(
 ) -> pd.DataFrame:
     """Return a copy of ``df`` with ``field`` set to ``value`` on the given wells.
 
-    An empty string or ``None`` unsets the field. Unknown wells are ignored.
+    An empty string or ``None`` unsets the field. Wells of ``plate`` that are
+    not in ``df`` yet are added when a value is set; invalid well names are
+    ignored.
     """
     out = df.copy()
     if field not in out.columns:
         out[field] = None
+    value = value if value not in ("", None) else None
     targets = {w for w in (normalize_well(w) for w in wells) if w}
     normalized = out["Well"].map(normalize_well)
-    mask = (out["Plate"] == plate) & normalized.isin(targets)
+    on_plate = out["Plate"] == plate
+    if value is not None:
+        existing = set(normalized[on_plate])
+        new_wells = sorted(targets - existing)
+        if new_wells:
+            added = pd.DataFrame({"Plate": plate, "Well": new_wells})
+            out = pd.concat([out, added], ignore_index=True)
+            normalized = out["Well"].map(normalize_well)
+            on_plate = out["Plate"] == plate
+    mask = on_plate & normalized.isin(targets)
     out[field] = out[field].astype(object)
-    out.loc[mask, field] = value if value not in ("", None) else None
+    out.loc[mask, field] = value
     return out
 
 

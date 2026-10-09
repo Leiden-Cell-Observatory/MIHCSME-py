@@ -63,8 +63,19 @@ class TestApplyEdit:
         out = plate_ops.apply_edit(_df(), "P1", ["A01"], "Treatment", "")
         assert pd.isna(out.loc[0, "Treatment"])
 
-    def test_unknown_wells_are_ignored(self):
+    def test_empty_wells_are_added(self):
         out = plate_ops.apply_edit(_df(), "P1", ["H12"], "Treatment", "X")
+        added = out[(out["Plate"] == "P1") & (out["Well"] == "H12")]
+        assert len(out) == 5
+        assert added["Treatment"].tolist() == ["X"]
+        assert pd.isna(added["Dose"].iloc[0])
+
+    def test_unsetting_empty_wells_adds_nothing(self):
+        out = plate_ops.apply_edit(_df(), "P1", ["H12"], "Treatment", "")
+        assert len(out) == 4
+
+    def test_invalid_wells_are_ignored(self):
+        out = plate_ops.apply_edit(_df(), "P1", ["Z99"], "Treatment", "X")
         assert out["Treatment"].tolist() == ["DMSO", "CPD1", "CPD2", "DMSO"]
 
     def test_normalises_requested_wells(self):

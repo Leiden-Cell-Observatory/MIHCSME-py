@@ -28,6 +28,11 @@ const CSS = `
 .pv-tip { position: fixed; pointer-events: none; background: #222; color: #fff; font-size: 11px;
   padding: 4px 6px; border-radius: 4px; display: none; white-space: pre; z-index: 1000; }
 .pv-empty { opacity: .7; padding: 12px; }
+.pv select, .pv input { font: inherit; color: inherit; background: transparent;
+  border: 1px solid var(--pv-line); border-radius: 4px; padding: 3px 6px; }
+.pv button { font: inherit; color: inherit; background: var(--pv-hover); cursor: pointer;
+  border: 1px solid var(--pv-line); border-radius: 4px; padding: 4px 8px; }
+.pv button:disabled { opacity: .5; cursor: default; }
 `;
 
 const wellName = (r, c) => String.fromCharCode(65 + r) + String(c + 1).padStart(2, "0");
