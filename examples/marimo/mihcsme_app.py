@@ -21,6 +21,7 @@ app = marimo.App(width="full", app_title="MIHCSME OMERO App")
 
 @app.cell(hide_code=True)
 def _(
+    OMERO_AVAILABLE,
     export_tab_content,
     get_active_tab,
     load_tab_content,
@@ -38,7 +39,16 @@ def _(
             "2. Edit Wells": wells_tab_content,
             "3. Edit Metadata": metadata_tab_content,
             "4. Export": export_tab_content,
-            "5. OMERO": omero_tab_content,
+            "5. OMERO": omero_tab_content
+            if OMERO_AVAILABLE
+            else mo.callout(
+                mo.md(
+                    "OMERO support is not installed. Install it with "
+                    "`pip install 'mihcsme-py[omero]'` (needs the zeroc-ice wheel). "
+                    "All other tabs work offline."
+                ),
+                kind="info",
+            ),
         },
         value=get_active_tab(),
         on_change=set_active_tab,
@@ -125,7 +135,16 @@ def _(ENABLE_LLM_FEATURES):
         validate_metadata_against_omero,
         write_metadata_to_excel,
     )
-    from mihcsme_py.omero_connection import connect as omero_connect
+    from mihcsme_py.plate_ops import plate_status
+
+    try:
+        import omero  # noqa: F401
+        from mihcsme_py.omero_connection import connect as omero_connect
+
+        OMERO_AVAILABLE = True
+    except ImportError:
+        omero_connect = None
+        OMERO_AVAILABLE = False
     from mihcsme_py.forms import form_to_model, model_form, render_form
     from mihcsme_py.widgets import PlateViewer
 
@@ -168,6 +187,7 @@ def _(ENABLE_LLM_FEATURES):
         EXAMPLE_FILE,
         InvestigationInformation,
         MIHCSMEMetadataLLM,
+        OMERO_AVAILABLE,
         Path,
         PlateViewer,
         StudyInformation,
@@ -179,6 +199,7 @@ def _(ENABLE_LLM_FEATURES):
         omero_connect,
         parse_excel_to_model,
         pd,
+        plate_status,
         render_form,
         upload_metadata_to_omero,
         validate_metadata_against_omero,
@@ -1232,11 +1253,13 @@ def _(
 @app.cell
 def _(
     get_omero_conn,
+    get_wells,
     metadata_updated,
     mo,
     omero_upload_target_id,
     omero_upload_target_type,
     omero_validate_button,
+    plate_status,
     validate_metadata_against_omero,
 ):
     # OMERO Validation (dry run) Handler
@@ -1286,6 +1309,12 @@ def _(
                     omero_validate_display = mo.callout(
                         mo.md("\n".join(_detail_lines)), kind="danger"
                     )
+                _status_table = mo.ui.table(
+                    plate_status(get_wells(), _validation),
+                    selection=None,
+                    label="Per-plate status",
+                )
+                omero_validate_display = mo.vstack([omero_validate_display, _status_table])
             except Exception as e:
                 omero_validate_display = mo.callout(
                     mo.md(f"**Validation error:** {e}"), kind="danger"
