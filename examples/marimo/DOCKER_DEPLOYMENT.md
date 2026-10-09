@@ -7,7 +7,7 @@ This directory contains a Dockerized version of the marimo OMERO app.
 - `Dockerfile` - Docker image configuration (uses pip instead of uv)
 - `requirements.txt` - Python dependencies
 - `.dockerignore` - Files to exclude from Docker build
-- `marimo_omero_app.py` - The main application
+- `mihcsme_app.py` - The main application
 
 ## Building and Running Locally
 
@@ -41,19 +41,19 @@ docker rm mihcsme-omero          # remove it
 
 ### 2a. Run with live-editable app script (recommended for development)
 
-Mount the local `marimo_omero_app.py` into the container so you can edit it without rebuilding:
+Mount the local `mihcsme_app.py` into the container so you can edit it without rebuilding:
 
 **Linux/macOS:**
 ```bash
-docker run -p 8080:8080 -v "$(pwd)/marimo_omero_app.py:/app/marimo_omero_app.py" -it mihcsme-omero-app
+docker run -p 8080:8080 -v "$(pwd)/mihcsme_app.py:/app/mihcsme_app.py" -it mihcsme-omero-app
 ```
 
 **Windows (PowerShell):**
 ```powershell
-docker run -p 8080:8080 -v "${PWD}\marimo_omero_app.py:/app/marimo_omero_app.py" -it mihcsme-omero-app
+docker run -p 8080:8080 -v "${PWD}\mihcsme_app.py:/app/mihcsme_app.py" -it mihcsme-omero-app
 ```
 
-Changes to `marimo_omero_app.py` on your host machine will be immediately reflected — marimo hot-reloads the file automatically.
+Changes to `mihcsme_app.py` on your host machine will be immediately reflected — marimo hot-reloads the file automatically.
 
 ### 3. Access the application
 
