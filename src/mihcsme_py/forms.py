@@ -57,27 +57,52 @@ def model_form(model_cls: Type[BaseModel], instance: Optional[BaseModel] = None,
     return mo.ui.dictionary(elements)
 
 
-def render_form(form, model_cls: Type[BaseModel]):
-    """Lay out a form from :func:`model_form`: scalars stacked, sub-models in accordions."""
+def render_form(
+    form,
+    model_cls: Type[BaseModel],
+    suggestions: Optional[Dict[str, Any]] = None,
+    prefix: str = "",
+):
+    """Lay out a form from :func:`model_form`: scalars stacked, sub-models in accordions.
+
+    ``suggestions`` maps dotted field paths (see :func:`flatten_values`) to an
+    element shown directly under that field, e.g. an "accept value from file" row.
+    """
     import marimo as mo
 
+    suggestions = suggestions or {}
     scalars: List[Any] = []
     sections: Dict[str, Any] = {}
     for name, field in model_cls.model_fields.items():
         kind, sub = _field_kind(field.annotation)
+        path = f"{prefix}{name}"
         if kind == "model":
-            sections[_label(name, field)] = render_form(form[name], sub)
+            sections[_label(name, field)] = render_form(form[name], sub, suggestions, f"{path}.")
         elif kind == "list":
             items = [
-                mo.vstack([mo.md(f"**{sub.__name__} {i + 1}**"), render_form(item, sub)])
+                mo.vstack(
+                    [
+                        mo.md(f"**{sub.__name__} {i + 1}**"),
+                        render_form(item, sub, suggestions, f"{path}.{i}."),
+                    ]
+                )
                 for i, item in enumerate(form[name])
             ]
             sections[_label(name, field)] = mo.vstack(items)
         else:
             scalars.append(form[name])
+            if path in suggestions:
+                scalars.append(suggestions[path])
     parts: List[Any] = list(scalars)
     if sections:
-        parts.append(mo.accordion(sections, multiple=True, expanded=list(sections)[:1]))
+        # Open the first section, plus every section that has a suggestion
+        with_hints = {
+            _label(name, field)
+            for name, field in model_cls.model_fields.items()
+            if any(p.startswith(f"{prefix}{name}.") for p in suggestions)
+        }
+        expanded = [k for k in sections if k in with_hints] or list(sections)[:1]
+        parts.append(mo.accordion(sections, multiple=True, expanded=expanded))
     return mo.vstack(parts, gap=0.5)
 
 
@@ -112,6 +137,80 @@ def form_to_model(
             f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in e.errors()
         ]
         return None, "\n".join(messages)
+
+
+
+def model_values(
+    model_cls: Type[BaseModel], instance: Optional[BaseModel] = None, extra_items: int = 0
+) -> Dict[str, Any]:
+    """Form-shaped values for ``instance`` (same structure as ``model_form(...).value``)."""
+    values: Dict[str, Any] = {}
+    for name, field in model_cls.model_fields.items():
+        current = getattr(instance, name, None) if instance is not None else None
+        kind, sub = _field_kind(field.annotation)
+        if kind == "model":
+            values[name] = model_values(sub, current, extra_items)
+        elif kind == "list":
+            items = [model_values(sub, item, extra_items) for item in (current or [])]
+            items += [model_values(sub, None, extra_items) for _ in range(extra_items)]
+            values[name] = items
+        else:
+            values[name] = "" if current is None else str(current)
+    return values
+
+
+def flatten_values(value: Any, prefix: str = "") -> Dict[str, str]:
+    """Flatten nested form values to ``{"a.b": v, "items.0.c": v}``."""
+    if isinstance(value, dict):
+        items = value.items()
+    elif isinstance(value, list):
+        items = ((str(i), v) for i, v in enumerate(value))
+    else:
+        return {prefix: "" if value is None else str(value)}
+    flat: Dict[str, str] = {}
+    for key, sub in items:
+        flat.update(flatten_values(sub, f"{prefix}.{key}" if prefix else str(key)))
+    return flat
+
+
+def suggest_values(current: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, str]:
+    """Paths where ``source`` has a non-empty value that differs from ``current``."""
+    mine = flatten_values(current)
+    return {
+        path: value.strip()
+        for path, value in flatten_values(source).items()
+        if value.strip() and mine.get(path, "").strip() != value.strip()
+    }
+
+
+def apply_values(current: Dict[str, Any], accepted: Dict[str, str]) -> Dict[str, Any]:
+    """Return a copy of ``current`` with each dotted path set; lists grow as needed."""
+    import copy
+
+    out = copy.deepcopy(current)
+    for path, value in accepted.items():
+        keys = path.split(".")
+        node: Any = out
+        for key, nxt in zip(keys[:-1], keys[1:]):
+            child_default: Any = [] if nxt.isdigit() else {}
+            if isinstance(node, list):
+                index = int(key)
+                while len(node) <= index:
+                    node.append({})
+                if not node[index] and child_default == []:
+                    node[index] = []
+                node = node[index]
+            else:
+                node = node.setdefault(key, child_default)
+        last = keys[-1]
+        if isinstance(node, list):
+            index = int(last)
+            while len(node) <= index:
+                node.append({})
+            node[index] = value
+        else:
+            node[last] = value
+    return out
 
 
 _SECTIONS = {

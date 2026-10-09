@@ -145,7 +145,19 @@ def _(ENABLE_LLM_FEATURES):
     except ImportError:
         omero_connect = None
         OMERO_AVAILABLE = False
-    from mihcsme_py.forms import assemble_metadata, model_form, render_form
+    from mihcsme_py.forms import (
+        apply_values,
+        apply_values,
+        assemble_metadata,
+        form_to_model,
+        model_values,
+        suggest_values,
+        form_to_model,
+        model_form,
+        model_values,
+        render_form,
+        suggest_values,
+    )
     from mihcsme_py.widgets import PlateViewer
 
     from importlib.resources import files as _resource_files
@@ -191,16 +203,20 @@ def _(ENABLE_LLM_FEATURES):
         Path,
         PlateViewer,
         StudyInformation,
+        apply_values,
         assemble_metadata,
         download_metadata_from_omero,
+        form_to_model,
         io,
         mo,
         model_form,
+        model_values,
         omero_connect,
         parse_excel_to_model,
         pd,
         plate_status,
         render_form,
+        suggest_values,
         upload_metadata_to_omero,
         validate_metadata_against_omero,
         write_metadata_to_excel,
@@ -712,19 +728,133 @@ def _(form_errors, metadata, mo, plate_viewer, wells_table):
 
 
 @app.cell
+def _(metadata, mo):
+    # Values accepted from an imported file, per section; reset when another template loads
+    _ = metadata
+    get_section_overrides, set_section_overrides = mo.state({})
+    get_dismissed_import, set_dismissed_import = mo.state(None)
+    get_metadata_subtab, set_metadata_subtab = mo.state("Investigation")
+    return (
+        get_dismissed_import,
+        get_metadata_subtab,
+        get_section_overrides,
+        set_dismissed_import,
+        set_metadata_subtab,
+        set_section_overrides,
+    )
+
+
+@app.cell
 def _(
     AssayInformation,
     InvestigationInformation,
     StudyInformation,
+    get_section_overrides,
     metadata,
     model_form,
 ):
-    investigation_form = model_form(
-        InvestigationInformation, metadata.investigation_information if metadata else None
-    )
-    study_form = model_form(StudyInformation, metadata.study_information if metadata else None)
-    assay_form = model_form(AssayInformation, metadata.assay_information if metadata else None)
+    _overrides = get_section_overrides()
+
+    def _base(key):
+        return _overrides.get(key, getattr(metadata, key) if metadata else None)
+
+    investigation_form = model_form(InvestigationInformation, _base("investigation_information"))
+    study_form = model_form(StudyInformation, _base("study_information"))
+    assay_form = model_form(AssayInformation, _base("assay_information"))
     return assay_form, investigation_form, study_form
+
+
+@app.cell
+def _(mo):
+    import_file = mo.ui.file(label="Excel file", filetypes=[".xlsx"])
+    return (import_file,)
+
+
+@app.cell
+def _(import_file, parse_excel_to_model):
+    # Only Investigation/Study/Assay information is used; the plate layout is ignored
+    imported_metadata = None
+    imported_name = None
+    import_error = None
+    if import_file.value:
+        imported_name = import_file.name()
+        try:
+            imported_metadata = parse_excel_to_model(import_file.contents())
+        except Exception as e:
+            import_error = str(e)
+    return import_error, imported_metadata, imported_name
+
+
+@app.cell
+def _(
+    AssayInformation,
+    InvestigationInformation,
+    StudyInformation,
+    apply_values,
+    assay_form,
+    form_errors,
+    form_to_model,
+    get_dismissed_import,
+    get_section_overrides,
+    imported_metadata,
+    imported_name,
+    investigation_form,
+    mo,
+    model_values,
+    set_dismissed_import,
+    set_section_overrides,
+    study_form,
+    suggest_values,
+):
+    _sections = {
+        "investigation_information": (InvestigationInformation, investigation_form),
+        "study_information": (StudyInformation, study_form),
+        "assay_information": (AssayInformation, assay_form),
+    }
+    section_suggestions = {}
+    if imported_metadata is not None and get_dismissed_import() != imported_name:
+        for _key, (_cls, _form) in _sections.items():
+            _found = suggest_values(_form.value, model_values(_cls, getattr(imported_metadata, _key)))
+            if _found:
+                section_suggestions[_key] = _found
+
+    def _accept(accepted_by_section):
+        # Rebuild every section from its current values so typed edits survive the refresh
+        _overrides = dict(get_section_overrides())
+        for _key, (_cls, _form) in _sections.items():
+            _values = apply_values(_form.value, accepted_by_section.get(_key, {}))
+            _model, _error = form_to_model(_cls, _values)
+            if _error is None:
+                _overrides[_key] = _model
+        set_section_overrides(_overrides)
+
+    suggestion_buttons = mo.ui.dictionary(
+        {
+            f"{_key}|{_path}": mo.ui.button(
+                label="Accept",
+                kind="neutral",
+                disabled=_key in form_errors,
+                on_click=lambda _v, k=_key, p=_path, v=_val: _accept({k: {p: v}}),
+            )
+            for _key, _found in section_suggestions.items()
+            for _path, _val in _found.items()
+        }
+    )
+    accept_all_button = mo.ui.button(
+        label="Accept all",
+        kind="success",
+        disabled=any(_key in form_errors for _key in section_suggestions),
+        on_click=lambda _v: _accept(section_suggestions),
+    )
+    dismiss_import_button = mo.ui.button(
+        label="Dismiss", on_click=lambda _v: set_dismissed_import(imported_name)
+    )
+    return (
+        accept_all_button,
+        dismiss_import_button,
+        section_suggestions,
+        suggestion_buttons,
+    )
 
 
 @app.cell
@@ -757,17 +887,45 @@ def _(
     AssayInformation,
     InvestigationInformation,
     StudyInformation,
+    accept_all_button,
     assay_form,
+    dismiss_import_button,
     form_errors,
+    get_metadata_subtab,
+    import_error,
+    import_file,
+    imported_name,
     investigation_form,
     metadata,
     mo,
     render_form,
+    section_suggestions,
+    set_metadata_subtab,
     study_form,
+    suggestion_buttons,
 ):
+    import html as _html
+
+    def _hints(key):
+        return {
+            _path: mo.hstack(
+                [
+                    mo.Html(
+                        "<span style='opacity:.75'>From file: <code>"
+                        + _html.escape(_val)
+                        + "</code></span>"
+                    ),
+                    suggestion_buttons[f"{key}|{_path}"],
+                ],
+                justify="start",
+                align="center",
+            )
+            for _path, _val in section_suggestions.get(key, {}).items()
+        }
+
     def _section(key, form, cls):
         _error = form_errors.get(key)
-        _parts = [render_form(form, cls)]
+        _parts = [render_form(form, cls, suggestions=_hints(key))]
         if _error:
             _parts.insert(
                 0,
@@ -778,24 +936,54 @@ def _(
             )
         return mo.vstack(_parts)
 
-    if metadata is None:
-        metadata_tab_content = mo.callout(
-            mo.md("Load a template first (tab 1)."), kind="warn"
+    _n_suggestions = sum(len(v) for v in section_suggestions.values())
+    if import_error:
+        _import_status = mo.callout(mo.md(f"**Could not read file:** {import_error}"), kind="danger")
+    elif _n_suggestions:
+        _import_status = mo.hstack(
+            [
+                mo.md(f"**{_n_suggestions}** suggested values from `{imported_name}`"),
+                accept_all_button,
+                dismiss_import_button,
+            ],
+            justify="start",
+            align="center",
         )
+    elif imported_name:
+        _import_status = mo.md(f"Nothing new in `{imported_name}`.")
     else:
+        _import_status = mo.md(
+            "Take Investigation, Study and Assay values from another MIHCSME file. "
+            "The plate layout is not changed."
+        )
+    _import_panel = mo.accordion(
+        {"Import from Excel": mo.vstack([import_file, _import_status])},
+        expanded=bool(imported_name),
+    )
+
+    if metadata is None:
+        metadata_tab_content = mo.callout(mo.md("Load a template first (tab 1)."), kind="warn")
+    else:
+        _subtabs = {}
+        for _label, _key, _form, _cls in [
+            ("Investigation", "investigation_information", investigation_form, InvestigationInformation),
+            ("Study", "study_information", study_form, StudyInformation),
+            ("Assay", "assay_information", assay_form, AssayInformation),
+        ]:
+            _count = len(section_suggestions.get(_key, {}))
+            _name = f"{_label} ({_count})" if _count else _label
+            _subtabs[_name] = _section(_key, _form, _cls)
+        _active = next(
+            (n for n in _subtabs if n.split(" (")[0] == get_metadata_subtab()), None
+        )
         metadata_tab_content = mo.vstack(
             [
-                mo.md(
-                    "### Metadata\n\nEdits apply as you type."
-                ),
+                mo.md("### Metadata\n\nEdits apply as you type."),
+                _import_panel,
                 mo.ui.tabs(
-                    {
-                        "Investigation": _section(
-                            "investigation_information", investigation_form, InvestigationInformation
-                        ),
-                        "Study": _section("study_information", study_form, StudyInformation),
-                        "Assay": _section("assay_information", assay_form, AssayInformation),
-                    }
+                    _subtabs,
+                    value=_active,
+                    on_change=lambda v: set_metadata_subtab(v.split(" (")[0]),
                 ),
             ],
             gap=2,
