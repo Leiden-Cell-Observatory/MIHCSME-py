@@ -112,3 +112,43 @@ def form_to_model(
             f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in e.errors()
         ]
         return None, "\n".join(messages)
+
+
+_SECTIONS = {
+    "investigation_information": "InvestigationInformation",
+    "study_information": "StudyInformation",
+    "assay_information": "AssayInformation",
+}
+
+
+def assemble_metadata(metadata, wells, section_values: Dict[str, Dict[str, Any]]):
+    """Combine loaded metadata with edited wells and edited form sections.
+
+    Rows with an invalid Plate/Well are left out and reported under
+    ``"assay_conditions"``; a section that fails validation keeps its loaded
+    value and is reported under its key. Callers should not export or upload
+    while ``errors`` is non-empty.
+
+    Returns:
+        ``(metadata, errors)`` where ``errors`` maps a section key to a message.
+    """
+    from mihcsme_py import models
+    from mihcsme_py.plate_ops import invalid_well_rows
+
+    errors: Dict[str, str] = {}
+    bad_rows = invalid_well_rows(wells)
+    if bad_rows:
+        shown = wells.loc[bad_rows, ["Plate", "Well"]].astype(str).to_dict("records")
+        errors["assay_conditions"] = "Invalid plate/well in rows: " + ", ".join(
+            f"{r['Plate']}/{r['Well']}" for r in shown
+        )
+        wells = wells.drop(index=bad_rows)
+    updates: Dict[str, Any] = {}
+    for key, value in section_values.items():
+        model, error = form_to_model(getattr(models, _SECTIONS[key]), value)
+        if error:
+            errors[key] = error
+        else:
+            updates[key] = model
+    result = metadata.update_conditions_from_dataframe(wells).model_copy(update=updates)
+    return result, errors

@@ -72,7 +72,7 @@ def apply_edit(
     value = value if value not in ("", None) else None
     targets = {w for w in (normalize_well(w) for w in wells) if w}
     normalized = out["Well"].map(normalize_well)
-    on_plate = out["Plate"] == plate
+    on_plate = out["Plate"].astype(str) == str(plate)
     if value is not None:
         existing = set(normalized[on_plate])
         new_wells = sorted(targets - existing)
@@ -80,11 +80,24 @@ def apply_edit(
             added = pd.DataFrame({"Plate": plate, "Well": new_wells})
             out = pd.concat([out, added], ignore_index=True)
             normalized = out["Well"].map(normalize_well)
-            on_plate = out["Plate"] == plate
+            on_plate = out["Plate"].astype(str) == str(plate)
     mask = on_plate & normalized.isin(targets)
     out[field] = out[field].astype(object)
     out.loc[mask, field] = value
     return out
+
+
+def invalid_well_rows(df: pd.DataFrame) -> List[int]:
+    """Return index labels of rows whose Plate is empty or Well is not a valid well name."""
+    if df.empty:
+        return []
+    bad = []
+    for index, plate, well in zip(df.index, df["Plate"], df["Well"]):
+        if _is_missing(plate) or str(plate).strip() == "" or _is_missing(well):
+            bad.append(index)
+        elif normalize_well(well) is None:
+            bad.append(index)
+    return bad
 
 
 def widget_payload(

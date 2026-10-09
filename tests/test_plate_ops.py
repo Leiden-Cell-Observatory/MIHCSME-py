@@ -178,3 +178,19 @@ class TestPlateStatus:
         status = plate_ops.plate_status(_df(), validation)
         assert not status["In OMERO"].any()
         assert (status["Wells matched"] == 0).all()
+
+
+class TestReviewFixes:
+    def test_apply_edit_matches_plate_names_as_strings(self):
+        df = _df().assign(Plate=[1, 1, 1, 2])
+        out = plate_ops.apply_edit(df, "1", ["A01"], "Treatment", "X")
+        assert len(out) == 4
+        assert out.loc[0, "Treatment"] == "X"
+
+    def test_invalid_well_rows(self):
+        df = _df().assign(Well=["A01", "Q01", "", "a2"])
+        df.loc[3, "Plate"] = None
+        assert plate_ops.invalid_well_rows(df) == [1, 2, 3]
+
+    def test_invalid_well_rows_empty_frame(self):
+        assert plate_ops.invalid_well_rows(pd.DataFrame()) == []

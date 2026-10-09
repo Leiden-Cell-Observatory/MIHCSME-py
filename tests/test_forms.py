@@ -65,3 +65,37 @@ def test_form_to_model_returns_error_for_bad_orcid():
     model, error = form_to_model(InvestigationInformation, value)
     assert model is None
     assert "data_owner.orcid" in error
+
+
+def _metadata():
+    import pandas as pd
+    from mihcsme_py.models import MIHCSMEMetadata
+
+    wells = pd.DataFrame({"Plate": ["P1", "P1"], "Well": ["A01", "A02"], "Treatment": ["DMSO", "X"]})
+    inv = InvestigationInformation(data_owner=DataOwner(first_name="Ada"))
+    return MIHCSMEMetadata.from_dataframe(wells, investigation_information=inv), wells
+
+
+def test_assemble_metadata_applies_wells_and_sections():
+    from mihcsme_py.forms import assemble_metadata
+
+    metadata, wells = _metadata()
+    values = model_form(InvestigationInformation, metadata.investigation_information).value
+    values["data_owner"]["first_name"] = "Grace"
+    result, errors = assemble_metadata(metadata, wells, {"investigation_information": values})
+    assert errors == {}
+    assert result.investigation_information.data_owner.first_name == "Grace"
+    assert len(result.assay_conditions) == 2
+
+
+def test_assemble_metadata_reports_bad_section_and_bad_wells():
+    from mihcsme_py.forms import assemble_metadata
+
+    metadata, wells = _metadata()
+    wells = wells.assign(Well=["A01", "Q01"])
+    values = model_form(InvestigationInformation, metadata.investigation_information).value
+    values["data_owner"]["orcid"] = "not-an-orcid"
+    result, errors = assemble_metadata(metadata, wells, {"investigation_information": values})
+    assert set(errors) == {"investigation_information", "assay_conditions"}
+    assert "Q01" in errors["assay_conditions"]
+    assert [c.well for c in result.assay_conditions] == ["A01"]

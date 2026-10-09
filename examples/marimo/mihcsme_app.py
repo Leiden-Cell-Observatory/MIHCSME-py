@@ -145,7 +145,7 @@ def _(ENABLE_LLM_FEATURES):
     except ImportError:
         omero_connect = None
         OMERO_AVAILABLE = False
-    from mihcsme_py.forms import form_to_model, model_form, render_form
+    from mihcsme_py.forms import assemble_metadata, model_form, render_form
     from mihcsme_py.widgets import PlateViewer
 
     from importlib.resources import files as _resource_files
@@ -191,8 +191,8 @@ def _(ENABLE_LLM_FEATURES):
         Path,
         PlateViewer,
         StudyInformation,
+        assemble_metadata,
         download_metadata_from_omero,
-        form_to_model,
         io,
         mo,
         model_form,
@@ -678,24 +678,21 @@ def _(get_wells, plate_viewer):
 
 
 @app.cell
-def _(mo, plate_viewer):
-    plate_viewer_ui = mo.ui.anywidget(plate_viewer)
-    return (plate_viewer_ui,)
-
-
-@app.cell
 def _(get_wells, mo, set_wells):
     wells_table = mo.ui.data_editor(get_wells(), on_change=set_wells)
     return (wells_table,)
 
 
 @app.cell(hide_code=True)
-def _(metadata, mo, plate_viewer_ui, wells_table):
+def _(form_errors, metadata, mo, plate_viewer, wells_table):
     if metadata is None:
         wells_tab_content = mo.callout(
             mo.md("**Please load a template first** in the Load Template tab."), kind="warn"
         )
     else:
+        # Wrapped here (not in its own cell) so selection changes don't re-run any cell
+        _plate_viewer_ui = mo.ui.anywidget(plate_viewer)
+        _wells_error = form_errors.get("assay_conditions")
         wells_tab_content = mo.vstack(
             [
                 mo.md(
@@ -706,7 +703,12 @@ def _(metadata, mo, plate_viewer_ui, wells_table):
                     legend entries; Shift adds, Esc clears), then set a value in the edit panel.
                     """
                 ),
-                plate_viewer_ui,
+                mo.callout(
+                    mo.md(f"**Not saved — fix in the table view:** {_wells_error}"), kind="danger"
+                )
+                if _wells_error
+                else mo.md(""),
+                _plate_viewer_ui,
                 mo.accordion({"Table view (bulk edit / copy-paste)": wells_table}),
             ],
             gap=2,
@@ -732,33 +734,25 @@ def _(
 
 @app.cell
 def _(
-    AssayInformation,
-    InvestigationInformation,
-    StudyInformation,
     assay_form,
-    form_to_model,
+    assemble_metadata,
     get_wells,
     investigation_form,
     metadata,
     study_form,
 ):
-    # Combine edited wells and edited sections; invalid sections keep the loaded values
+    # Combine edited wells and form sections; errors block export and upload
     form_errors = {}
     metadata_updated = None
     if metadata is not None:
-        _sections = {}
-        for _key, _cls, _form in [
-            ("investigation_information", InvestigationInformation, investigation_form),
-            ("study_information", StudyInformation, study_form),
-            ("assay_information", AssayInformation, assay_form),
-        ]:
-            _model, _error = form_to_model(_cls, _form.value)
-            if _error:
-                form_errors[_key] = _error
-            else:
-                _sections[_key] = _model
-        metadata_updated = metadata.update_conditions_from_dataframe(get_wells()).model_copy(
-            update=_sections
+        metadata_updated, form_errors = assemble_metadata(
+            metadata,
+            get_wells(),
+            {
+                "investigation_information": investigation_form.value,
+                "study_information": study_form.value,
+                "assay_information": assay_form.value,
+            },
         )
     return form_errors, metadata_updated
 
@@ -827,6 +821,7 @@ def _(mo):
 def _(
     export_button,
     export_filename,
+    form_errors,
     io,
     metadata_updated,
     mo,
@@ -834,7 +829,16 @@ def _(
 ):
     export_result = None
     download_button = None
-    if export_button.value:
+    if export_button.value and form_errors:
+        export_result = mo.callout(
+            mo.md(
+                "**Not exported:** fix the errors first ("
+                + ", ".join(sorted(form_errors))
+                + ") in the Edit Wells / Edit Metadata tabs."
+            ),
+            kind="danger",
+        )
+    elif export_button.value:
         try:
             _final_metadata = metadata_updated
 
@@ -1160,6 +1164,7 @@ def _(mo):
 
 @app.cell
 def _(
+    form_errors,
     get_omero_conn,
     metadata_updated,
     mo,
@@ -1193,6 +1198,12 @@ def _(
             omero_upload_error = "Not connected to OMERO. Please connect first."
         elif metadata_updated is None:
             omero_upload_error = "No metadata to upload. Please load a template first."
+        elif form_errors:
+            omero_upload_error = (
+                "Fix the errors first ("
+                + ", ".join(sorted(form_errors))
+                + ") in the Edit Wells / Edit Metadata tabs."
+            )
         else:
             try:
                 # Build final metadata with any form updates

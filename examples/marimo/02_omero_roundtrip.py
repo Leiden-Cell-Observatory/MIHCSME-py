@@ -112,14 +112,28 @@ def _(conn, metadata, mo, screen_id, upload_button, upload_metadata_to_omero):
     mo.stop(not upload_button.value)
     upload_result = upload_metadata_to_omero(conn, metadata, "Screen", screen_id)
     upload_result
-    return
+    return (upload_result,)
 
 
 @app.cell
-def _(conn, download_metadata_from_omero, metadata, screen_id):
+def _(conn, download_metadata_from_omero, metadata, screen_id, upload_result):
+    # Runs after the upload: download again and compare wells and their values
+    _ = upload_result
     downloaded = download_metadata_from_omero(conn, "Screen", screen_id)
-    same_wells = downloaded.to_dataframe().shape == metadata.to_dataframe().shape
-    {"wells match": same_wells, "downloaded wells": len(downloaded.assay_conditions)}
+    _key = ["Plate", "Well"]
+    _original = metadata.to_dataframe().astype(str).sort_values(_key).reset_index(drop=True)
+    _roundtrip = (
+        downloaded.to_dataframe()
+        .astype(str)
+        .reindex(columns=_original.columns)
+        .sort_values(_key)
+        .reset_index(drop=True)
+    )
+    {
+        "uploaded wells": len(_original),
+        "downloaded wells": len(_roundtrip),
+        "identical": _original.equals(_roundtrip),
+    }
     return
 
 

@@ -228,9 +228,10 @@ function render({ model, el }) {
     const unsetRow = `<div class="pv-li" data-v=""><span class="pv-sw" style="background:var(--pv-unset);border:1px dashed var(--pv-line)"></span>unset</div>`;
     if (scale.numeric) {
       const stops = [0, 0.25, 0.5, 0.75, 1].map(gradColor).join(",");
-      legend.innerHTML = `<div>${model.get("color_field")} (log scale)</div>
+      legend.innerHTML = `<div data-ref="gradTitle"></div>
         <div class="pv-grad" style="background:linear-gradient(90deg,${stops})"></div>
         <div style="display:flex;justify-content:space-between"><span>${scale.lo}</span><span>${scale.hi}</span></div>${unsetRow}`;
+      legend.querySelector('[data-ref="gradTitle"]').textContent = `${model.get("color_field")} (log scale)`;
     } else {
       const rows = [...scale.counts].sort((a, b) => b[1] - a[1]);
       legend.innerHTML = "";
