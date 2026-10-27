@@ -22,7 +22,7 @@ COPY --link requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
-COPY --link marimo_omero_app.py .
+COPY --link mihcsme_app.py .
 
 EXPOSE 8080
 
@@ -36,4 +36,4 @@ USER app_user
 
 # Run the marimo app
 # --no-sandbox: skip marimo's inline dependency sandbox and use the pre-installed packages
-CMD ["marimo", "run", "marimo_omero_app.py", "--no-sandbox", "--host", "0.0.0.0", "-p", "8080"]
+CMD ["marimo", "run", "mihcsme_app.py", "--no-sandbox", "--host", "0.0.0.0", "-p", "8080"]

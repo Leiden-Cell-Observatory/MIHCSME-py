@@ -181,3 +181,14 @@ class TestUploadStrictMode:
         assert result["status"] in ("success", "partial_success")
         assert result["validation"]["valid"] is False
         assert result["wells_succeeded"] >= 0
+
+
+def test_validation_reports_omero_plates_when_target_missing(monkeypatch):
+    from mihcsme_py import uploader
+    from mihcsme_py.models import AssayCondition, MIHCSMEMetadata
+
+    monkeypatch.setattr(uploader, "_get_plates_to_process", lambda conn, t, i: [])
+    metadata = MIHCSMEMetadata(assay_conditions=[AssayCondition(plate="P1", well="A01")])
+    result = uploader.validate_metadata_against_omero(None, metadata, "Screen", 9)
+    assert result["omero_plates"] == []
+    assert result["valid"] is False

@@ -2,7 +2,7 @@
 
 Convert MIHCSME (Minimum Information about a High Content Screening Microscopy Experiment) metadata from Excel spreadsheets to validated Pydantic models and upload to OMERO.
 
-[![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/Leiden-Cell-Observatory/MIHCSME-py/blob/main/examples/marimo/marimo_omero_app.py)
+[![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/Leiden-Cell-Observatory/MIHCSME-py/blob/main/examples/marimo/mihcsme_app.py)
 [![CI/CD](https://github.com/Leiden-Cell-Observatory/mihcsme-py/actions/workflows/ci.yml/badge.svg)](https://github.com/Leiden-Cell-Observatory/mihcsme-py/actions)
 [![Documentation](https://github.com/Leiden-Cell-Observatory/mihcsme-py/actions/workflows/docs.yml/badge.svg)](https://leiden-cell-observatory.github.io/mihcsme-py/)
 [![PyPI version](https://img.shields.io/pypi/v/mihcsme-py)](https://pypi.org/project/mihcsme-py/)
@@ -105,6 +105,17 @@ print(f"Wells succeeded: {result['wells_succeeded']}")
 
 conn.close()
 ```
+
+### Examples
+
+| Notebook | What it shows |
+|---|---|
+| [`examples/marimo/mihcsme_app.py`](examples/marimo/mihcsme_app.py) | Flagship app: load Excel, plate editor, metadata forms, export, OMERO validate/upload with per-plate status |
+| [`examples/marimo/01_parse_and_explore.py`](examples/marimo/01_parse_and_explore.py) | Excel → validated model → well table → Excel / filled template |
+| [`examples/marimo/02_omero_roundtrip.py`](examples/marimo/02_omero_roundtrip.py) | Validate, upload and download metadata on an OMERO Screen |
+| [`examples/marimo/03_llm_fill.py`](examples/marimo/03_llm_fill.py) | Fill Investigation/Study/Assay information from lab notes with an LLM |
+
+Run the app locally: `uvx marimo run --sandbox examples/marimo/mihcsme_app.py`
 
 ## Excel File Structure
 

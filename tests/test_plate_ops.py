@@ -1,0 +1,196 @@
+"""Tests for plate_ops: pure dataframe helpers behind the plate editor."""
+
+import math
+
+import pandas as pd
+import pytest
+
+from mihcsme_py import plate_ops
+
+
+def _df():
+    return pd.DataFrame(
+        {
+            "Plate": ["P1", "P1", "P1", "P2"],
+            "Well": ["A01", "A02", "B01", "A01"],
+            "Treatment": ["DMSO", "CPD1", "CPD2", "DMSO"],
+            "Dose": ["0.1", "1", "10", "0.1"],
+        }
+    )
+
+
+class TestNormalizeWell:
+    def test_pads_and_uppercases(self):
+        assert plate_ops.normalize_well("a1") == "A01"
+        assert plate_ops.normalize_well(" B12 ") == "B12"
+
+    def test_invalid_returns_none(self):
+        assert plate_ops.normalize_well("Q01") is None
+        assert plate_ops.normalize_well("") is None
+        assert plate_ops.normalize_well("A") is None
+
+
+class TestDetectFormat:
+    def test_96(self):
+        assert plate_ops.detect_format(["A01", "H12"]) == "96"
+
+    def test_384_by_row(self):
+        assert plate_ops.detect_format(["A01", "I01"]) == "384"
+
+    def test_384_by_column(self):
+        assert plate_ops.detect_format(["A13"]) == "384"
+
+    def test_empty_defaults_to_96(self):
+        assert plate_ops.detect_format([]) == "96"
+
+
+class TestApplyEdit:
+    def test_sets_value_on_selected_wells_only(self):
+        out = plate_ops.apply_edit(_df(), "P1", ["A01", "B01"], "Treatment", "X")
+        assert out["Treatment"].tolist() == ["X", "CPD1", "X", "DMSO"]
+
+    def test_does_not_mutate_input(self):
+        df = _df()
+        plate_ops.apply_edit(df, "P1", ["A01"], "Treatment", "X")
+        assert df["Treatment"].tolist() == ["DMSO", "CPD1", "CPD2", "DMSO"]
+
+    def test_new_field_is_added(self):
+        out = plate_ops.apply_edit(_df(), "P1", ["A01"], "CellLine", "HeLa")
+        assert out.loc[0, "CellLine"] == "HeLa"
+        assert out["CellLine"].isna().sum() == 3
+
+    def test_empty_value_unsets(self):
+        out = plate_ops.apply_edit(_df(), "P1", ["A01"], "Treatment", "")
+        assert pd.isna(out.loc[0, "Treatment"])
+
+    def test_empty_wells_are_added(self):
+        out = plate_ops.apply_edit(_df(), "P1", ["H12"], "Treatment", "X")
+        added = out[(out["Plate"] == "P1") & (out["Well"] == "H12")]
+        assert len(out) == 5
+        assert added["Treatment"].tolist() == ["X"]
+        assert pd.isna(added["Dose"].iloc[0])
+
+    def test_unsetting_empty_wells_adds_nothing(self):
+        out = plate_ops.apply_edit(_df(), "P1", ["H12"], "Treatment", "")
+        assert len(out) == 4
+
+    def test_invalid_wells_are_ignored(self):
+        out = plate_ops.apply_edit(_df(), "P1", ["Z99"], "Treatment", "X")
+        assert out["Treatment"].tolist() == ["DMSO", "CPD1", "CPD2", "DMSO"]
+
+    def test_normalises_requested_wells(self):
+        out = plate_ops.apply_edit(_df(), "P1", ["a1"], "Treatment", "X")
+        assert out.loc[0, "Treatment"] == "X"
+
+
+class TestWidgetPayload:
+    def test_shape(self):
+        p = plate_ops.widget_payload(_df(), "Treatment", "96")
+        assert p["plates"] == ["P1", "P2"]
+        assert p["fields"] == ["Treatment", "Dose"]
+        assert len(p["values"]["P1"]) == 96
+        assert p["values"]["P1"][0] == "DMSO"  # A01
+        assert p["values"]["P1"][1] == "CPD1"  # A02
+        assert p["values"]["P1"][12] == "CPD2"  # B01
+        assert p["values"]["P1"][2] is None
+
+    def test_values_are_strings(self):
+        df = _df().assign(Dose=[0.1, 1, 10, 0.1])
+        p = plate_ops.widget_payload(df, "Dose", "96")
+        assert p["values"]["P1"][0] == "0.1"
+
+    def test_widget_payload_nan_becomes_none(self):
+        df = _df()
+        df.loc[0, "Treatment"] = float("nan")
+        p = plate_ops.widget_payload(df, "Treatment", "96")
+        assert p["values"]["P1"][0] is None
+        assert not any(isinstance(v, float) and math.isnan(v) for v in p["values"]["P1"])
+
+    def test_widget_payload_normalises_well_names(self):
+        df = _df().assign(Well=["a1", "A2", "b1", "A1"])
+        p = plate_ops.widget_payload(df, "Treatment", "96")
+        assert p["values"]["P1"][0] == "DMSO"
+        assert p["values"]["P1"][12] == "CPD2"
+
+    def test_widget_payload_ignores_wells_outside_grid(self):
+        df = _df().assign(Well=["A01", "A30", "Q01", "A01"])
+        p = plate_ops.widget_payload(df, "Treatment", "96")
+        assert len(p["values"]["P1"]) == 96
+        assert p["values"]["P1"][0] == "DMSO"
+        assert p["values"]["P1"].count(None) == 95
+
+    def test_no_color_field_gives_all_none(self):
+        p = plate_ops.widget_payload(_df(), None, "96")
+        assert set(p["values"]["P1"]) == {None}
+
+    def test_empty_dataframe(self):
+        p = plate_ops.widget_payload(pd.DataFrame(), None, "96")
+        assert p == {"plates": [], "fields": [], "values": {}}
+
+
+class TestDetailPayload:
+    def test_current_plate_only_and_strings(self):
+        d = plate_ops.detail_payload(_df(), "P1")
+        assert set(d) == {"A01", "A02", "B01"}
+        assert d["A01"] == {"Treatment": "DMSO", "Dose": "0.1"}
+
+    def test_drops_missing_values(self):
+        df = _df()
+        df.loc[0, "Dose"] = None
+        assert plate_ops.detail_payload(df, "P1")["A01"] == {"Treatment": "DMSO"}
+
+
+class TestPlateStatus:
+    def _validation(self, **kw):
+        base = {
+            "valid": True,
+            "errors": [],
+            "warnings": [],
+            "plates": {"in_metadata_not_omero": [], "in_omero_not_metadata": []},
+            "wells": {},
+            "omero_plates": ["P1", "P2"],
+        }
+        base.update(kw)
+        return base
+
+    def test_all_matched(self):
+        status = plate_ops.plate_status(_df(), self._validation())
+        row = status.set_index("Plate").loc["P1"]
+        assert bool(row["In design"]) and bool(row["In OMERO"])
+        assert row["Wells in design"] == 3
+        assert row["Wells matched"] == 3
+        assert row["Missing in OMERO"] == 0
+
+    def test_missing_wells_and_extra_plate(self):
+        validation = self._validation(
+            omero_plates=["P1", "P2", "P3"],
+            wells={"P1": {"in_metadata_not_omero": ["B01"], "in_omero_not_metadata": ["H12", "H11"]}},
+        )
+        status = plate_ops.plate_status(_df(), validation).set_index("Plate")
+        assert status.loc["P1", "Wells matched"] == 2
+        assert status.loc["P1", "Missing in OMERO"] == 1
+        assert status.loc["P1", "Extra in OMERO"] == 2
+        assert not bool(status.loc["P3", "In design"])
+        assert bool(status.loc["P3", "In OMERO"])
+
+    def test_plate_status_target_missing(self):
+        validation = self._validation(valid=False, errors=["Screen with ID 9 not found"], omero_plates=[])
+        status = plate_ops.plate_status(_df(), validation)
+        assert not status["In OMERO"].any()
+        assert (status["Wells matched"] == 0).all()
+
+
+class TestReviewFixes:
+    def test_apply_edit_matches_plate_names_as_strings(self):
+        df = _df().assign(Plate=[1, 1, 1, 2])
+        out = plate_ops.apply_edit(df, "1", ["A01"], "Treatment", "X")
+        assert len(out) == 4
+        assert out.loc[0, "Treatment"] == "X"
+
+    def test_invalid_well_rows(self):
+        df = _df().assign(Well=["A01", "Q01", "", "a2"])
+        df.loc[3, "Plate"] = None
+        assert plate_ops.invalid_well_rows(df) == [1, 2, 3]
+
+    def test_invalid_well_rows_empty_frame(self):
+        assert plate_ops.invalid_well_rows(pd.DataFrame()) == []

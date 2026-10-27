@@ -55,6 +55,7 @@ def validate_metadata_against_omero(
             - warnings: List of warning messages (non-blocking)
             - plates: Dict with 'in_metadata_not_omero' and 'in_omero_not_metadata' lists
             - wells: Dict mapping plate_name -> {'in_metadata_not_omero': [...], 'in_omero_not_metadata': [...]}
+            - omero_plates: Sorted plate names found in OMERO for the target (empty if not found)
     """
     result: Dict[str, Any] = {
         "valid": True,
@@ -65,6 +66,7 @@ def validate_metadata_against_omero(
             "in_omero_not_metadata": [],
         },
         "wells": {},
+        "omero_plates": [],
     }
 
     # Check target exists
@@ -78,6 +80,7 @@ def validate_metadata_against_omero(
 
     # Get plate names from OMERO
     omero_plate_names = {plate.getName() for plate in plates}
+    result["omero_plates"] = sorted(omero_plate_names)
     omero_plate_map = {plate.getName(): plate for plate in plates}
 
     # Get plate names from metadata
