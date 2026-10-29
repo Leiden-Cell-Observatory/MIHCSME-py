@@ -14,7 +14,7 @@ Convert MIHCSME (Minimum Information about a High Content Screening Microscopy E
 
 - **Parse MIHCSME Excel templates** into type-safe Pydantic models
 - **Automatic validation** with clear error messages
-- **Bidirectional conversion** between Excel, Pydantic, and OMERO key-pair value format
+- **Bidirectional conversion** between Excel, Pydantic, and OMERO key-value pair format
 - **Modern CLI** with rich terminal output
 - **OMERO.script** for server-side handling of MIHCSME templates
 
