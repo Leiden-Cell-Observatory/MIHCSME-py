@@ -264,3 +264,58 @@ class TestDeleteAnnotationsFromObject:
         assert 100 not in deleted_ids  # FileAnnotation
         assert 200 not in deleted_ids  # Custom namespace
         assert 300 not in deleted_ids  # Empty namespace
+
+
+class TestSetGroup:
+    """Test set_group resolves names to IDs before switching."""
+
+    def test_group_name_resolved_to_id(self):
+        from mihcsme_py.omero_connection import set_group
+
+        conn = Mock()
+        group_obj = Mock()
+        group_obj.getId.return_value = 53
+        conn.getObject.return_value = group_obj
+        conn.setGroupForSession.return_value = True
+
+        assert set_group(conn, "LACDR_CDS_Drukker_RA") == 53
+        conn.getObject.assert_called_once_with(
+            "ExperimenterGroup", attributes={"name": "LACDR_CDS_Drukker_RA"}
+        )
+        conn.setGroupForSession.assert_called_once_with(53)
+
+    def test_numeric_string_used_as_id(self):
+        from mihcsme_py.omero_connection import set_group
+
+        conn = Mock()
+        conn.setGroupForSession.return_value = True
+
+        assert set_group(conn, "53") == 53
+        conn.getObject.assert_not_called()
+        conn.setGroupForSession.assert_called_once_with(53)
+
+    def test_already_in_group_is_ok(self):
+        from mihcsme_py.omero_connection import set_group
+
+        conn = Mock()
+        conn.setGroupForSession.return_value = None  # omero-py: already in group
+
+        assert set_group(conn, 53) == 53
+
+    def test_unknown_group_raises(self):
+        from mihcsme_py.omero_connection import set_group
+
+        conn = Mock()
+        conn.getObject.return_value = None
+
+        with pytest.raises(ValueError, match="not found"):
+            set_group(conn, "nope")
+
+    def test_not_member_raises(self):
+        from mihcsme_py.omero_connection import set_group
+
+        conn = Mock()
+        conn.setGroupForSession.return_value = False
+
+        with pytest.raises(ValueError, match="not a member"):
+            set_group(conn, 99)

@@ -1141,7 +1141,7 @@ def _(mo):
     )
     omero_group = mo.ui.text(
         value="",
-        label="Group (optional)",
+        label="Group name or ID (optional)",
         full_width=True,
         placeholder="Leave empty for default group",
     )
