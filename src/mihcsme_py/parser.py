@@ -289,66 +289,42 @@ def _check_for_date_typed_cells(xls: pd.ExcelFile, sheet_name: str) -> None:
 
 
 def _parse_reference_sheet(xls: pd.ExcelFile, sheet_name: str) -> dict:
-    """Parse reference sheets (those starting with '_')."""
+    """Parse reference sheets (those starting with '_') into a key -> value dict.
+
+    Two layouts occur: the MIHCSME template (comment rows starting with '#',
+    then term rows with no header) and sheets written by
+    ``write_metadata_to_excel`` (a ``Key``/``Value`` header row, then data).
+    Every non-comment row is data, except a leading ``Key``/``Value`` header.
+    """
     logger.debug(f"Parsing reference sheet: {sheet_name}")
 
     try:
-        df = pd.read_excel(xls, sheet_name=sheet_name)
+        df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
 
-        # Skip rows that start with '#'
-        if not df.empty and len(df.columns) > 0:
-            df = df[~df.iloc[:, 0].astype(str).str.startswith("#")]
-
-        # Skip empty rows
-        df = df.dropna(how="all")
-
-        if df.empty:
-            logger.debug(f"Reference sheet '{sheet_name}' is empty after filtering")
-            return {}
-
-        # Find the first non-comment row with data
-        valid_rows = []
-        for idx, row in df.iterrows():
-            if not all(pd.isna(val) for val in row):
-                valid_rows.append(idx)
-
-        if not valid_rows:
-            logger.debug(f"Reference sheet '{sheet_name}' has no valid data rows")
-            return {}
-
-        # Need at least 2 rows: one for header, one for data
-        if len(valid_rows) < 2:
-            logger.debug(f"Reference sheet '{sheet_name}' has header but no data rows")
-            return {}
-
-        header_row_idx = valid_rows[0]
-
-        # Get data (use .loc for label-based indexing after filtering)
-        headers = df.loc[header_row_idx].tolist()
-
-        # Check if we have at least two columns
-        if len(headers) < 2:
+        if df.empty or len(df.columns) < 2:
             logger.debug(f"Reference sheet '{sheet_name}' needs at least 2 columns")
             return {}
 
-        # Get data rows (must have at least one row after header)
-        data_start_idx = header_row_idx + 1
-        if data_start_idx not in df.index:
-            logger.debug(f"Reference sheet '{sheet_name}' has no data rows after header")
+        # Skip comment rows and empty rows
+        df = df[~df.iloc[:, 0].astype(str).str.startswith("#")]
+        df = df.dropna(how="all")
+
+        # Skip the Key/Value header written by write_metadata_to_excel
+        if not df.empty:
+            first = [str(v).strip().lower() for v in df.iloc[0, :2]]
+            if first == ["key", "value"]:
+                df = df.iloc[1:]
+
+        if df.empty:
+            logger.debug(f"Reference sheet '{sheet_name}' has no data rows")
             return {}
 
-        data_rows = df.loc[data_start_idx:].copy()
-        data_rows.columns = headers
-
-        # Convert to dictionary
         ref_data = {}
-        for _, row in data_rows.iterrows():
-            # Use first column as key, second as value
-            if len(row) >= 2:
-                key = row.iloc[0]
-                value = row.iloc[1]
-                if not pd.isna(key):
-                    ref_data[str(key)] = None if pd.isna(value) else value
+        for _, row in df.iterrows():
+            key = row.iloc[0]
+            value = row.iloc[1]
+            if not pd.isna(key):
+                ref_data[str(key)] = None if pd.isna(value) else value
 
         logger.info(f"Parsed reference sheet '{sheet_name}' with {len(ref_data)} entries")
         return ref_data
