@@ -105,9 +105,14 @@ def _(ENABLE_LLM_FEATURES, mo):
 
 @app.cell
 def _():
-    # Configuration flag to enable/disable LLM features
-    # Set to False to hide all LLM-related UI elements
-    ENABLE_LLM_FEATURES = True
+    # LLM features are off unless MIHCSME_ENABLE_LLM is set to 1/true/yes
+    import os as _os
+
+    ENABLE_LLM_FEATURES = _os.environ.get("MIHCSME_ENABLE_LLM", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     return (ENABLE_LLM_FEATURES,)
 
 

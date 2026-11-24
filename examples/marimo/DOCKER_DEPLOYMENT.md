@@ -1,20 +1,31 @@
 # Docker Deployment for MIHCSME OMERO App
 
-This directory contains a Dockerized version of the marimo OMERO app.
+The image is built from the repository root (`Dockerfile`, `.dockerignore`) and
+installs `mihcsme-py` from the checked-out source, so it matches the commit it was
+built from. It serves `mihcsme_app.py` with `marimo run` (app view only, no editor).
 
-## Files
+Pushes to `main`, version tags and releases publish the image to
+`ghcr.io/leiden-cell-observatory/mihcsme-app` via `.github/workflows/docker.yml`.
 
-- `Dockerfile` - Docker image configuration (uses pip instead of uv)
-- `requirements.txt` - Python dependencies
-- `.dockerignore` - Files to exclude from Docker build
-- `mihcsme_app.py` - The main application
+## ShinyProxy
+
+A spec is in `deploy/shinyproxy/application.yml`. Notes:
+
+- `port: 8080` is the container port; ShinyProxy handles authentication, so the
+  app runs with `--no-token`.
+- `websocket-reconnection-mode: None`: a marimo session cannot be resumed after
+  the websocket drops.
+- The GHCR package is private by default. Either make it public (package
+  settings on GitHub) or give ShinyProxy's Docker daemon credentials
+  (`docker login ghcr.io` with a token that has `read:packages`).
+- The image is `linux/amd64` only (the zeroc-ice wheel is x86_64 only).
 
 ## Building and Running Locally
 
 ### 1. Build the Docker image
 
 ```bash
-# Run from the examples/marimo/ directory
+# Run from the repository root
 docker build -t mihcsme-omero-app .
 ```
 
@@ -45,15 +56,15 @@ Mount the local `mihcsme_app.py` into the container so you can edit it without r
 
 **Linux/macOS:**
 ```bash
-docker run -p 8080:8080 -v "$(pwd)/mihcsme_app.py:/app/mihcsme_app.py" -it mihcsme-omero-app
+docker run -p 8080:8080 -v "$(pwd)/examples/marimo/mihcsme_app.py:/app/mihcsme_app.py" -it mihcsme-omero-app
 ```
 
 **Windows (PowerShell):**
 ```powershell
-docker run -p 8080:8080 -v "${PWD}\mihcsme_app.py:/app/mihcsme_app.py" -it mihcsme-omero-app
+docker run -p 8080:8080 -v "${PWD}\examples\marimo\mihcsme_app.py:/app/mihcsme_app.py" -it mihcsme-omero-app
 ```
 
-Changes to `mihcsme_app.py` on your host machine will be immediately reflected — marimo hot-reloads the file automatically.
+Restart the container to pick up changes to `mihcsme_app.py` (`marimo run` does not reload the file unless you add `--watch` to the command).
 
 ### 3. Access the application
 
@@ -61,13 +72,14 @@ Open your browser and navigate to: http://localhost:8080
 
 ## Environment Variables
 
-If you need to set environment variables for OMERO connection or LLM API keys:
+LLM features are off by default. Enable them with `MIHCSME_ENABLE_LLM=1` plus an OpenRouter key:
 
 ```bash
 docker run -p 8080:8080 \
   -e OMERO_HOST=your-omero-host \
   -e OMERO_PORT=4064 \
-  -e LLM_API_KEY=your-api-key \
+  -e MIHCSME_ENABLE_LLM=1 \
+  -e LLM_OPENROUTER_KEY=your-openrouter-key \
   -it mihcsme-omero-app
 ```
 
@@ -79,7 +91,7 @@ The default configuration is set up for Linux x86_64 and includes the appropriat
 ### Other Platforms
 If you need to deploy on a different platform (ARM, macOS, Windows), you'll need to:
 
-1. Update the zeroc-ice URL in `requirements.txt` to match your platform
+1. Pass a matching wheel with `--build-arg ZEROC_ICE_WHEEL=<url>`
 2. Check the [zeroc-ice releases](https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases) for available wheels
 
 ## Health Check

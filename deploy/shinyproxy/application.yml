@@ -1,0 +1,21 @@
+# ShinyProxy spec for the MIHCSME Editor (marimo app, served with `marimo run`).
+# Merge the spec under `proxy.specs` of your ShinyProxy application.yml.
+proxy:
+  specs:
+    - id: mihcsme-editor
+      display-name: MIHCSME Editor
+      description: Plate layouts and screen metadata, from Excel to OMERO
+      container-image: ghcr.io/leiden-cell-observatory/mihcsme-app:latest
+      port: 8080
+      # Default CMD of the image; listed so it is explicit and easy to override.
+      container-cmd: ["marimo", "run", "mihcsme_app.py", "--host", "0.0.0.0", "--port", "8080", "--headless", "--no-token", "--no-sandbox"]
+      # A marimo run session cannot resume after a dropped websocket; let the page reload instead.
+      websocket-reconnection-mode: None
+      container-memory-request: 1g
+      container-memory-limit: 2g
+      # container-env:
+      # LLM fill feature is off by default. To enable, set both:
+      #   MIHCSME_ENABLE_LLM: "1"
+      #   LLM_OPENROUTER_KEY: "<openrouter key>"
+      # Optional: restrict access
+      # access-groups: [scientists]
