@@ -48,3 +48,16 @@ examples/R/
 # Cache
 **/__pycache__/
 **/.pytest_cache/
+
+# Secrets and local data (never bake into the image)
+.env
+*.env
+*.xlsx
+*.json
+.claude/
+.opencode/
+.superpowers/
+__marimo__/
+.coverage
+.ruff_cache/
+examples/marimo/marimo_bia.py
