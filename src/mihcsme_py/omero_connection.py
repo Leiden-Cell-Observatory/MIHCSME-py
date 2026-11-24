@@ -62,10 +62,46 @@ def connect(
 
     # Set group if specified
     if group:
-        conn.setGroupForSession(group)
-        logger.info(f"Set group context to: {group}")
+        try:
+            set_group(conn, group)
+        except Exception:
+            conn.close()
+            raise
 
     return conn
+
+
+def set_group(conn: BlitzGateway, group: str | int) -> int:
+    """
+    Switch the session to an OMERO group, given its name or numeric ID.
+
+    BlitzGateway.setGroupForSession() only accepts a group ID and silently
+    returns False for anything else, so names are resolved to IDs first.
+
+    Args:
+        conn: Active OMERO connection
+        group: Group name (e.g. "my_lab") or group ID (e.g. 53 or "53")
+
+    Returns:
+        The ID of the group the session is now in
+
+    Raises:
+        ValueError: If the group does not exist or the user is not a member
+    """
+    group_str = str(group).strip()
+    if group_str.isdigit():
+        group_id = int(group_str)
+    else:
+        group_obj = conn.getObject("ExperimenterGroup", attributes={"name": group_str})
+        if group_obj is None:
+            raise ValueError(f"OMERO group '{group_str}' not found")
+        group_id = group_obj.getId()
+
+    if conn.setGroupForSession(group_id) is False:
+        raise ValueError(f"User is not a member of OMERO group '{group_str}' (ID {group_id})")
+
+    logger.info(f"Set group context to: {group_str} (ID {group_id})")
+    return group_id
 
 
 def create_map_annotation(
