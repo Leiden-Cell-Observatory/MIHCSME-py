@@ -22,7 +22,8 @@ RUN pip install ".[app,omero]" "llm==0.28" "llm-openrouter==0.5" \
 
 RUN useradd --create-home --uid 1000 app
 WORKDIR /app
-COPY --chown=app:app examples/marimo/mihcsme_app.py .
+# Root-owned and read-only for the app user: the served notebook cannot be changed.
+COPY examples/marimo/mihcsme_app.py .
 USER app
 
 EXPOSE 8080
