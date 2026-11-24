@@ -69,3 +69,46 @@ def test_date_typed_cells_raise_clear_error():
 
     with pytest.raises(ValueError, match="Date-typed cells.*C3.*C4"):
         parse_excel_to_model(excel_bytes)
+
+
+TEMPLATE_PATH = (
+    __import__("pathlib").Path(__file__).parent.parent
+    / "src"
+    / "mihcsme_py"
+    / "templates"
+    / "LEI-MIHCSME.xlsx"
+)
+
+
+def test_reference_sheet_keeps_first_term_of_template():
+    """Template reference sheets have no header row; the first term must not be dropped."""
+    metadata = parse_excel_to_model(TEMPLATE_PATH)
+    refs = {r.name: r.data for r in metadata.reference_sheets}
+
+    assay_types = refs["_efo_assaytypes"]
+    assert assay_types["high content analysis of cells"] == "http://www.ebi.ac.uk/efo/EFO_0005397"
+    assert len(assay_types) == 8
+
+    study_types = refs["_efo_studytypes"]
+    assert study_types["high content analysis of cells"] == "http://www.ebi.ac.uk/efo/EFO_0005397"
+    assert len(study_types) == 3
+
+    assert (
+        refs["_fbbiVisualizationMethods"]["visualization method"]
+        == "http://purl.obolibrary.org/obo/FBbi_00000031"
+    )
+
+
+def test_reference_sheet_round_trip_keeps_all_entries(tmp_path):
+    """Sheets written by write_metadata_to_excel have a Key/Value header; all entries survive."""
+    from mihcsme_py.models import MIHCSMEMetadata, ReferenceSheet
+    from mihcsme_py.writer import write_metadata_to_excel
+
+    data = {"Human": "Homo sapiens", "Mouse": "Mus musculus", "Other": None}
+    metadata = MIHCSMEMetadata(reference_sheets=[ReferenceSheet(name="_Organisms", data=data)])
+    out = tmp_path / "refs.xlsx"
+    write_metadata_to_excel(metadata, out)
+
+    parsed = parse_excel_to_model(out)
+    refs = {r.name: r.data for r in parsed.reference_sheets}
+    assert refs["_Organisms"] == data
